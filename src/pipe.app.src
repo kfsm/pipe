@@ -1,0 +1,16 @@
+{application, pipe,
+   [
+      {description, "process pipe library"},
+      {vsn,         "0.0.0"},
+      {modules,     [
+         pipe,
+         pipe_process
+      ]},
+      {registered,  []},
+      {applications,[
+         kernel,
+         stdlib
+      ]},
+      {env, []}
+   ]
+}.  
