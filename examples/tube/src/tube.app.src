@@ -1,0 +1,15 @@
+{application, tube,
+   [
+      {description, "pipe library example"},
+      {vsn,         "0.0.0"},
+      {modules,     [
+         tube
+      ]},
+      {registered,  []},
+      {applications,[
+         kernel,
+         stdlib
+      ]},
+      {env, []}
+   ]
+}.  
