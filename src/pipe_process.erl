@@ -64,20 +64,20 @@ terminate(Reason, #machine{mod=Mod}=S) ->
 
 %%
 %%
-handle_call({ioctl, Req, Val}, _Tx, #machine{mod=Mod, sid=Sid0}=S) ->
+handle_call({ioctl, Req, Val}, _Tx, #machine{mod=Mod}=S) ->
    % ioctl set request
    ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
    try
-      {reply, Val, S#machine{sid = Mod:ioctl({Req, Val}, Sid0)}}
+      {reply, Val, S#machine{state = Mod:ioctl({Req, Val}, S#machine.state)}}
    catch _:_ ->
       {reply, Val, S}
    end;
 
-handle_call({ioctl, Req}, _Tx, #machine{mod=Mod, sid=Sid0}=S) ->
+handle_call({ioctl, Req}, _Tx, #machine{mod=Mod}=S) ->
    % ioctl get request
    ?DEBUG("pipe ioctl ~p: req ~p~n", [self(), Req]),
    try
-      {reply, Mod:ioctl(Req, Sid0), S}
+      {reply, Mod:ioctl(Req, S#machine.state), S}
    catch _:_ ->
       {reply, undefined, S}
    end;
