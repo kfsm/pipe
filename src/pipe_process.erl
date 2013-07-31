@@ -64,6 +64,20 @@ terminate(Reason, #machine{mod=Mod}=S) ->
 
 %%
 %%
+handle_call({ioctl, Req, Val}, _Tx, #machine{mod=Mod, sid=Sid0}=S) ->
+   % ioctl set request
+   ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
+   {next_state, Val, 
+      S#machine{
+         sid = Mod:ioctl({Req, Val}, Sid0)
+      }
+   };
+
+handle_call({ioctl, Req}, _Tx, #machine{mod=Mod, sid=Sid0}=S) ->
+   % ioctl set request
+   ?DEBUG("pipe ioctl ~p: req ~p~n", [self(), Req]),
+   {next_state, Mod:ioctl(Req, Sid0), S};
+
 handle_call(Msg0, Tx, #machine{mod=Mod, sid=Sid0}=S) ->
    % synchronous out-of-bound call to machine   
    ?DEBUG("pipe call ~p: tx ~p, msg ~p~n", [self(), Tx, Msg0]),

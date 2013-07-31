@@ -41,11 +41,17 @@
    bind/3,
    make/1,
    a/2, 
-   b/2, 
+   a/3,
+   b/2,
+   b/3, 
    send/2,
+   send/3,
    relay/2,
+   relay/3,
    recv/0, 
    recv/1,
+   recv/2,
+   ioctl/2,
    behaviour_info/1
 ]).
 
@@ -61,8 +67,9 @@
 %% pipe behavior
 behaviour_info(callbacks) ->
    [
-      {init, 1}
-     ,{free, 2}
+      {init,  1}
+     ,{free,  2}
+     ,{ioctl, 2}
    ];
 behaviour_info(_Other) ->
    undefined.
@@ -128,48 +135,96 @@ make([Head | Tail]) ->
 
 %%
 %% send message through pipe
-%% TODO: [noyield | noconnect] option
+%%    Options:
+%%       noyield   - do not suspend current processes
+%%       noconnect - do not connect remote node
 -spec(a/2 :: (pipe(), any()) -> ok).
+-spec(a/3 :: (pipe(), any(), list()) -> ok).
 -spec(b/2 :: (pipe(), any()) -> ok).
+-spec(b/3 :: (pipe(), any(), list()) -> ok).
 
 a({pipe, A, _}, Msg) ->
    do_send(A, self(), Msg).
+a({pipe, A, _}, Msg, Opts) ->
+   do_send(A, self(), Msg, Opts).
+
 b({pipe, _, B}, Msg) ->
    do_send(B, self(), Msg).
+b({pipe, _, B}, Msg, Opts) ->
+   do_send(B, self(), Msg, Opts).
 
 %%
 %% send pipe message to process 
-%% TODO: [noyield | noconnect] option
+%%    Options:
+%%       noyield   - do not suspend current processes
+%%       noconnect - do not connect remote node
 -spec(send/2 :: (proc(), any()) -> any()).
+-spec(send/3 :: (proc(), any(), list()) -> any()).
 
 send(_, undefined) ->
    ok;
 send(Sink, Msg) ->
    do_send(Sink, self(), Msg).
 
+send(_, undefined, _Opts) ->
+   ok;
+send(Sink, Msg, Opts) ->
+   do_send(Sink, self(), Msg, Opts).
+
 %%
 %% relay pipe message
-%% TODO: [noyield | noconnect] option
+%%    Options:
+%%       noyield   - do not suspend current processes
+%%       noconnect - do not connect remote node
 -spec(relay/2 :: (pipe(), any()) -> any()).
+-spec(relay/3 :: (pipe(), any(), list()) -> any()).
 
 relay({pipe, A, B}, Msg) ->
    do_send(B, A, Msg).
 
+relay({pipe, A, B}, Msg, Opts) ->
+   do_send(B, A, Msg, Opts).
+
 %%
 %% receive pipe message
+%%   noexit opts returns {error, timeout} instead of exit signal
 -spec(recv/0 :: () -> any()).
 -spec(recv/1 :: (timeout()) -> any()).
+-spec(recv/2 :: (timeout(), list()) -> any()).
 
 recv() ->
    recv(5000).
 
 recv(Timeout) ->
+   recv(Timeout, []).
+
+recv(Timeout, [noexit]) ->
+   receive
+   {'$pipe', _Pid, Msg} ->
+      Msg
+   after Timeout ->
+      {error, timeout}
+   end;
+
+recv(Timeout, _) ->
    receive
    {'$pipe', _Pid, Msg} ->
       Msg
    after Timeout ->
       exit(timeout)
    end.
+
+%%
+%% ioctl interface
+-spec(ioctl/2 :: (proc(), atom() | {atom(), any()}) -> any()).
+
+ioctl(Pid, {Req, Val})
+ when is_atom(Req) ->
+   gen_server:call(Pid, {ioctl, Req, Val});
+ioctl(Pid, Req)
+ when is_atom(Req) ->
+   gen_server:call(Pid, {ioctl, Req}).
+
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -179,21 +234,33 @@ recv(Timeout) ->
 
 %%
 %% TODO: [noyield | noconnect] option
-do_send(Sink, Pid, Msg)
+do_send(Sink, Pid, Msg) ->
+   do_send(Sink, Pid, Msg, [noyield, noconnect]).
+
+do_send(Sink, Pid, Msg, Opts)
  when is_pid(Sink) ->
    try 
-      erlang:send(Sink, {'$pipe', Pid, Msg}, [noconnect]), 
-      erlang:yield(),
+      % send message
+      case lists:member(noconnect, Opts) of
+         true  -> erlang:send(Sink, {'$pipe', Pid, Msg}, [noconnect]);
+         false -> erlang:send(Sink, {'$pipe', Pid, Msg}, [])
+      end,
+
+      % switch context
+      case lists:member(noyield, Opts) of
+         true  -> ok;
+         false -> erlang:yield()
+      end,
       Msg 
    catch _:_ -> 
       Msg 
    end;
 
-do_send(Fun, Pid, Msg)
+do_send(Fun, Pid, Msg, Opts)
  when is_function(Fun) ->
-   do_send(Fun(Msg), Pid, Msg);
+   do_send(Fun(Msg), Pid, Msg, Opts);
 
-do_send(undefined, _Pid, Msg) ->
+do_send(undefined, _Pid, Msg, _Opts) ->
    Msg.
 
 %%
