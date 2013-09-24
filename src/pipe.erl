@@ -118,14 +118,15 @@ bind(b, Pid, B) ->
 
 
 %%
-%% make pipeline, return last processes
+%% make pipeline, return pipeline head
 -spec(make/1 :: ([proc()]) -> pid()).
 
-make([Head | Tail]) ->
+make(Pipeline) ->
+   [Head | Tail] = lists:reverse(Pipeline),
    lists:foldl(
       fun(Sink, Source) -> 
-         bind(a, Sink, Source),
-         bind(b, Source, Sink),
+         bind(b, Sink, Source),
+         bind(a, Source, Sink),
          Sink
       end, 
       Head,
