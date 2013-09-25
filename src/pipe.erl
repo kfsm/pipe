@@ -37,9 +37,11 @@
    start_link/4,
    spawn/1,
    spawn_link/1,
+   spawn_monitor/1,
    bind/2,
    bind/3,
    make/1,
+   free/1,
    a/2, 
    a/3,
    b/2,
@@ -93,14 +95,18 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% spawn stateless pipe handler
--spec(spawn/1      :: (function()) -> pid()).
--spec(spawn_link/1 :: (function()) -> pid()).
+-spec(spawn/1         :: (function()) -> pid()).
+-spec(spawn_link/1    :: (function()) -> pid()).
+-spec(spawn_monitor/1 :: (function()) -> {pid(), reference()}).
 
 spawn(Fun) ->
    erlang:spawn(fun() -> pipe_loop(Fun, undefined, undefined) end).
 
 spawn_link(Fun) ->
    erlang:spawn_link(fun() -> pipe_loop(Fun, undefined, undefined) end).
+
+spawn_monitor(Fun) ->
+   erlang:spawn_monitor(fun() -> pipe_loop(Fun, undefined, undefined) end).
 
 %%
 %% bind process to pipeline
@@ -131,6 +137,22 @@ make(Pipeline) ->
       end, 
       Head,
       Tail
+   ).
+
+%%
+%% terminate pipeline
+-spec(free/1 :: ([proc()]) -> ok).
+
+free(Pipeline) ->
+   lists:foreach(
+      fun
+      ({Pid, Ref}) ->
+         _ = erlang:demonitor(Ref, [flush]),
+         erlang:send(Pid, {'$pipe', self(), '$free'});
+      (Pid) -> 
+         erlang:send(Pid, {'$pipe', self(), '$free'}) 
+      end,
+      Pipeline
    ).
 
 
@@ -274,6 +296,9 @@ pipe_loop(Fun, A, B) ->
    {'$pipe', '$b', Pid} ->
       ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
       pipe_loop(Fun, A, Pid);
+   {'$pipe', Pid, '$free'} ->
+      ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
+      ok;
    {'$pipe', B, Msg} ->
       _ = pipe:send(A, Fun(Msg)),
       pipe_loop(Fun, A, B);
