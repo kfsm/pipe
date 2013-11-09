@@ -42,8 +42,10 @@
    bind/3,
    make/1,
    free/1,
+   a/1,
    a/2, 
    a/3,
+   b/1,
    b/2,
    b/3, 
    send/2,
@@ -154,6 +156,16 @@ free(Pipeline) ->
       end,
       Pipeline
    ).
+
+%%
+%% return pid() of pipe processes
+-spec(a/1 :: (pipe()) -> pid()).
+-spec(b/1 :: (pipe()) -> pid()).
+
+a({pipe, A, _}) -> 
+   A.
+b({pipe, _, B}) -> 
+   B.
 
 
 %%
