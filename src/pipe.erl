@@ -56,6 +56,8 @@
    recv/1,
    recv/2,
    ioctl/2,
+   stream/1,
+   stream/2,
    behaviour_info/1
 ]).
 
