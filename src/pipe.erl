@@ -173,6 +173,7 @@ b({pipe, _, B}) ->
 %%    Options:
 %%       noyield   - do not suspend current processes
 %%       noconnect - do not connect remote node
+%%       
 -spec(a/2 :: (pipe(), any()) -> ok).
 -spec(a/3 :: (pipe(), any(), list()) -> ok).
 -spec(b/2 :: (pipe(), any()) -> ok).
@@ -226,6 +227,7 @@ relay({pipe, A, B}, Msg, Opts) ->
 -spec(recv/0 :: () -> any()).
 -spec(recv/1 :: (timeout()) -> any()).
 -spec(recv/2 :: (timeout(), list()) -> any()).
+-spec(recv/3 :: (pid(), timeout(), list()) -> any()).
 
 recv() ->
    recv(5000).
@@ -233,21 +235,26 @@ recv() ->
 recv(Timeout) ->
    recv(Timeout, []).
 
-recv(Timeout, [noexit]) ->
+recv(Timeout, Opts) ->
    receive
    {'$pipe', _Pid, Msg} ->
       Msg
    after Timeout ->
-      {error, timeout}
-   end;
-
-recv(Timeout, _) ->
-   receive
-   {'$pipe', _Pid, Msg} ->
-      Msg
-   after Timeout ->
-      exit(timeout)
+      recv_timeout(Opts)
    end.
+
+recv(Pid, Timeout, Opts) ->
+   receive
+   {'$pipe', Pid, Msg} ->
+      Msg
+   after Timeout ->
+      recv_timeout(Opts)
+   end.
+   
+recv_timeout([noexit]) ->
+   {error, timeout};
+recv_timeout(_) ->
+   exit(timeout).
 
 %%
 %% ioctl interface
@@ -260,6 +267,18 @@ ioctl(Pid, Req)
  when is_atom(Req) ->
    gen_server:call(Pid, {ioctl, Req}).
 
+%%
+%% stream interface
+-spec(stream/1 :: (timeout()) -> any()).
+-spec(stream/2 :: (pid(), timeout()) -> any()).
+
+stream(Timeout) ->
+   stream:new(pipe:recv(Timeout), fun() -> stream(Timeout) end).
+
+stream(Pid, Timeout) ->
+   stream:new(pipe:recv(Pid, Timeout, []), fun() -> stream(Pid, Timeout) end).
+
+
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -268,7 +287,7 @@ ioctl(Pid, Req)
 %%%----------------------------------------------------------------------------   
 
 %%
-%% TODO: [noyield | noconnect] option
+%%
 do_send(Sink, Pid, Msg) ->
    do_send(Sink, Pid, Msg, [noyield, noconnect]).
 
