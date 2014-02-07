@@ -22,3 +22,25 @@
 -else.
    -define(DEBUG(Str, Args), ok).
 -endif.
+
+-define(IO_YIELD,   1).
+-define(IO_CONNECT, 2).
+-define(IO_FLOW,    4).
+
+
+%%
+%% derived from RabbitMQ server credit_flow.erl
+-define(FLOW_CTL(Pid, Default, Var, Expr),
+   begin
+     case get({credit, Pid}) of
+         undefined -> Var = Default;
+         Var       -> ok
+     end,
+     put({credit, Pid}, Expr)
+   end
+).
+
+%%
+%%
+-define(DEFAULT_CREDIT,   4).
+-define(DEFAULT_DEBIT,    2).

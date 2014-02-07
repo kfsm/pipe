@@ -55,6 +55,8 @@
    recv/0, 
    recv/1,
    recv/2,
+   recv/3,
+   ack/1,
    ioctl/2,
    stream/1,
    stream/2,
@@ -128,7 +130,8 @@ bind(b, Pid, B) ->
 
 
 %%
-%% make pipeline, return pipeline head
+%% make pipeline by binding stages
+%% return pipeline head
 -spec(make/1 :: ([proc()]) -> pid()).
 
 make(Pipeline) ->
@@ -182,46 +185,48 @@ b({pipe, _, B}) ->
 -spec(b/3 :: (pipe(), any(), list()) -> ok).
 
 a({pipe, A, _}, Msg) ->
-   do_send(A, self(), Msg).
+   do_send(A, self(), Msg, 0).
 a({pipe, A, _}, Msg, Opts) ->
    do_send(A, self(), Msg, Opts).
 
 b({pipe, _, B}, Msg) ->
-   do_send(B, self(), Msg).
+   do_send(B, self(), Msg, 0).
 b({pipe, _, B}, Msg, Opts) ->
    do_send(B, self(), Msg, Opts).
 
 %%
 %% send pipe message to process 
 %%    Options:
-%%       noyield   - do not suspend current processes
-%%       noconnect - do not connect remote node
+%%       yield   - suspend current processes
+%%       connect - connect remote node
+%%       flow    - use flow control
 -spec(send/2 :: (proc(), any()) -> any()).
 -spec(send/3 :: (proc(), any(), list()) -> any()).
 
 send(_, undefined) ->
    ok;
 send(Sink, Msg) ->
-   do_send(Sink, self(), Msg).
+   do_send(Sink, self(), Msg, 0).
 
 send(_, undefined, _Opts) ->
    ok;
 send(Sink, Msg, Opts) ->
-   do_send(Sink, self(), Msg, Opts).
+   do_send(Sink, self(), Msg, io_flags(Opts, 0)).
 
 %%
 %% relay pipe message
 %%    Options:
-%%       noyield   - do not suspend current processes
-%%       noconnect - do not connect remote node
+%%       yield   - suspend current processes
+%%       connect - connect remote node
+%%       flow    - use flow control
 -spec(relay/2 :: (pipe(), any()) -> any()).
 -spec(relay/3 :: (pipe(), any(), list()) -> any()).
 
 relay({pipe, A, B}, Msg) ->
-   do_send(B, A, Msg).
+   do_send(B, A, Msg, 0).
 
 relay({pipe, A, B}, Msg, Opts) ->
-   do_send(B, A, Msg, Opts).
+   do_send(B, A, Msg, io_flags(Opts, 0)).
 
 %%
 %% receive pipe message
@@ -280,7 +285,20 @@ stream(Timeout) ->
 stream(Pid, Timeout) ->
    stream:new(pipe:recv(Pid, Timeout, []), fun() -> stream(Pid, Timeout) end).
 
+%%
+%% acknowledge (flow control)
+-spec(ack/1 :: (pid()) -> ok).
 
+ack(Pid) ->
+   ?FLOW_CTL(Pid, ?DEFAULT_DEBIT, C,
+      if C == 1 -> 
+            erlang:send(Pid, {'$pipe', '$debit', self(), ?DEFAULT_DEBIT}),
+            ?DEFAULT_DEBIT;
+         true   -> 
+            C - 1
+      end
+   ),
+   ok.
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -290,25 +308,17 @@ stream(Pid, Timeout) ->
 
 %%
 %%
-do_send(Sink, Pid, Msg) ->
-   do_send(Sink, Pid, Msg, [noyield, noconnect]).
-
-do_send(Sink, Pid, Msg, Opts)
+do_send(Sink, Pid, Msg, Flags)
  when is_pid(Sink) ->
    try 
-      % send message
-      case lists:member(noconnect, Opts) of
-         true  -> erlang:send(Sink, {'$pipe', Pid, Msg}, [noconnect]);
-         false -> erlang:send(Sink, {'$pipe', Pid, Msg}, [])
-      end,
-
-      % switch context
-      case lists:member(noyield, Opts) of
-         true  -> ok;
-         false -> erlang:yield()
-      end,
+      erlang:send(Sink, 
+         {'$pipe', Pid, Msg},
+         send_opts(Flags band ?IO_CONNECT)
+      ),
+      do_yield(Flags band ?IO_YIELD),
+      do_flow(Sink, Flags band ?IO_FLOW),
       Msg 
-   catch _:_ -> 
+   catch error:_ -> 
       Msg 
    end;
 
@@ -318,6 +328,69 @@ do_send(Fun, Pid, Msg, Opts)
 
 do_send(undefined, _Pid, Msg, _Opts) ->
    Msg.
+
+%%
+%% send options
+send_opts(0) -> [noconnect];
+send_opts(_) -> [].
+
+%%
+%% yield current process
+do_yield(0) -> ok;
+do_yield(_) -> erlang:yield().
+
+%%
+%% flow control
+do_flow(_Pid, 0) ->
+   ok;
+do_flow(Pid,  _) ->
+   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
+      if C == 1 -> suspend(Pid);
+         true   -> C - 1
+      end
+   ).
+
+%%
+%% suspend current process
+suspend(Pid) ->
+   Node = erlang:node(Pid),
+   try erlang:monitor(process, Pid) of
+      Tx ->
+         %% receive debit message or process crash
+         receive
+            {'$pipe', '$debit', Pid, D} ->
+               erlang:demonitor(Tx, [flush]),
+               D;
+            {'DOWN', Tx, _, _, noconnection} ->
+               exit({nodedown, Node});
+            {'DOWN', Tx, _, _, Reason} ->
+               exit(Reason)
+         % after Timeout ->
+         %    erlang:demonitor(Tx, [flush]),
+         %    exit(timeout)
+         end         
+   catch error:_ ->
+      % unable to set monitor, fall-back to node monitor
+      monitor_node(Node, true),
+      receive
+         {nodedown, Node} -> 
+            monitor_node(Node, false),
+            exit({nodedown, Node})
+      after 0 -> 
+         receive
+            {'$pipe', '$debit', D} ->
+               monitor_node(Node, false),
+               D;
+            {nodedown, Node} ->
+               monitor_node(Node, false),
+               exit({nodedown, Node})
+         % after Timeout ->
+         %    monitor_node(Node, false),
+         %    exit(timeout)
+         end
+      end
+   end.   
+
 
 %%
 %% pipe loop
@@ -339,3 +412,19 @@ pipe_loop(Fun, A, B) ->
       _ = pipe:send(B, Fun(Msg)),
       pipe_loop(Fun, A, B)
    end.
+
+%%
+%% send options
+io_flags([yield  |T], Flags) ->
+   io_flags(T, ?IO_YIELD bor Flags);
+io_flags([connect|T], Flags) ->
+   io_flags(T, ?IO_CONNECT bor Flags);
+io_flags([flow   |T], Flags) ->
+   io_flags(T, ?IO_FLOW bor Flags);
+io_flags([_|T], Flags) ->
+   io_flags(T, Flags);
+io_flags([], Flags) ->
+   Flags.
+
+
+
