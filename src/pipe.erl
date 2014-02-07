@@ -289,7 +289,10 @@ stream(Pid, Timeout) ->
 %% acknowledge (flow control)
 -spec(ack/1 :: (pid()) -> ok).
 
-ack(Pid) ->
+ack({pipe, A, _}) ->
+   ack(A);
+ack(Pid)
+ when is_pid(Pid) ->
    ?FLOW_CTL(Pid, ?DEFAULT_DEBIT, C,
       if C == 1 -> 
             erlang:send(Pid, {'$pipe', '$debit', self(), ?DEFAULT_DEBIT}),
