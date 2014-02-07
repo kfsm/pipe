@@ -109,6 +109,12 @@ handle_info({'$pipe', '$b', Pid}, S) ->
    ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
    {noreply, S#machine{b=Pid}};
 
+handle_info({'$pipe', '$debit', Pid, D}, S) ->
+   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
+         erlang:min(?DEFAULT_CREDIT, C + D)
+   ),
+   {noreply, S};
+
 handle_info({'$pipe', Tx, Msg}, #machine{mod=Mod, sid=Sid0}=S) ->   
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),

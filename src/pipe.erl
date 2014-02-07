@@ -405,6 +405,11 @@ pipe_loop(Fun, A, B) ->
    {'$pipe', Pid, '$free'} ->
       ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
       ok;
+   {'$pipe', '$debit', Pid, D} ->
+      ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
+         erlang:min(?DEFAULT_CREDIT, C + D)
+      ),
+      pipe_loop(Fun, A, B);
    {'$pipe', B, Msg} ->
       _ = pipe:send(A, Fun(Msg)),
       pipe_loop(Fun, A, B);
