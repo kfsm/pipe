@@ -23,9 +23,18 @@
    -define(DEBUG(Str, Args), ok).
 -endif.
 
--define(IO_YIELD,   1).
--define(IO_CONNECT, 2).
--define(IO_FLOW,    4).
+%% default pipe container
+-define(CONFIG_PIPE,     pipe_process).
+
+%% default pipe timeout
+-define(CONFIG_TIMEOUT,  5000).
+
+
+%%
+%% I/O flags 
+-define(IO_YIELD,     1).
+-define(IO_NOCONNECT, 2).
+-define(IO_FLOW,      4).
 
 
 %%
@@ -43,4 +52,6 @@
 %%
 %%
 -define(DEFAULT_CREDIT,   4).
--define(DEFAULT_DEBIT,    2).
+
+
+-define(DEFAULT_DEBIT,    10).

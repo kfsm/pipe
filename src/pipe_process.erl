@@ -64,24 +64,6 @@ terminate(Reason, #machine{mod=Mod}=S) ->
 
 %%
 %%
-handle_call({ioctl, Req, Val}, _Tx, #machine{mod=Mod}=S) ->
-   % ioctl set request
-   ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
-   try
-      {reply, Val, S#machine{state = Mod:ioctl({Req, Val}, S#machine.state)}}
-   catch _:_ ->
-      {reply, Val, S}
-   end;
-
-handle_call({ioctl, Req}, _Tx, #machine{mod=Mod}=S) ->
-   % ioctl get request
-   ?DEBUG("pipe ioctl ~p: req ~p~n", [self(), Req]),
-   try
-      {reply, Mod:ioctl(Req, S#machine.state), S}
-   catch _:_ ->
-      {reply, undefined, S}
-   end;
-
 handle_call(Msg0, Tx, #machine{mod=Mod, sid=Sid0}=S) ->
    % synchronous out-of-bound call to machine   
    ?DEBUG("pipe call ~p: tx ~p, msg ~p~n", [self(), Tx, Msg0]),
@@ -101,13 +83,50 @@ handle_cast(_, S) ->
 
 %%
 %%
-handle_info({'$pipe', '$a', Pid}, S) ->
+handle_info({'$pipe', Tx, {ioctl, a, Pid}}, S) ->
    ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
+   pipe:ack(Tx, {ok, S#machine.a}),
    {noreply, S#machine{a=Pid}};
+handle_info({'$pipe', Tx, {ioctl, a}}, S) ->
+   pipe:ack(Tx, {ok, S#machine.a}),
+   {noreply, S};
 
-handle_info({'$pipe', '$b', Pid}, S) ->
+handle_info({'$pipe', Tx, {ioctl, b, Pid}}, S) ->
    ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
+   pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S#machine{b=Pid}};
+handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
+   pipe:ack(Tx, {ok, S#machine.b}),
+   {noreply, S};
+
+handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
+   % ioctl set request
+   ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
+   try
+      pipe:ack(Tx, ok),
+      {noreply, S#machine{state = Mod:ioctl({Req, Val}, S#machine.state)}}
+   catch _:_ ->
+      pipe:ack(Tx, ok),
+      {noreply, S}
+   end;
+
+handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
+   % ioctl get request
+   ?DEBUG("pipe ioctl ~p: req ~p~n", [self(), Req]),
+   try
+      pipe:ack(Tx, Mod:ioctl(Req, S#machine.state)),
+      {noreply, S}
+   catch _:_ ->
+      pipe:ack(Tx, undefined),
+      {noreply, S}
+   end;
+
+
+
+handle_info({'$pipe', _Pid, '$free'}, S) ->
+   ?DEBUG("pipe ~p: free", [self()]),
+   {stop, normal, S};
+
 
 handle_info({'$pipe', '$debit', Pid, D}, S) ->
    ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
