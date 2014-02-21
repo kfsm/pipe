@@ -2,10 +2,7 @@
    [
       {description, "process pipe library"},
       {vsn,         "0.3.0"},
-      {modules,     [
-         pipe,
-         pipe_process
-      ]},
+      {modules,     []},
       {registered,  []},
       {applications,[
          kernel,

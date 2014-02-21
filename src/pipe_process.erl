@@ -121,16 +121,13 @@ handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
       {noreply, S}
    end;
 
-
-
 handle_info({'$pipe', _Pid, '$free'}, S) ->
    ?DEBUG("pipe ~p: free", [self()]),
    {stop, normal, S};
 
-
-handle_info({'$pipe', '$debit', Pid, D}, S) ->
-   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
-         erlang:min(?DEFAULT_CREDIT, C + D)
+handle_info({'$flow', Pid, D}, S) ->
+   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
+      erlang:min(?DEFAULT_CREDIT_A, C + D)
    ),
    {noreply, S};
 
@@ -146,17 +143,6 @@ handle_info({'$pipe', Tx, Msg}, #machine{mod=Mod, sid=Sid0}=S) ->
          {stop, Reason, S#machine{state=State}}
    end;
 
-handle_info({'$req', Tx, Msg0}, #machine{mod=Mod, sid=Sid0}=S) ->   
-   %% out-of-bound plib call to FSM
-   ?DEBUG("pipe $req ~p: tx ~p, msg ~p~n", [self(), Tx, Msg0]),
-   case Mod:Sid0(Msg0, make_pipe(Tx, S#machine.a, S#machine.b), S#machine.state) of
-      {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
-      {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
-      {stop, Reason, State} ->
-         {stop, Reason, S#machine{state=State}}
-   end;
 
 handle_info(Msg0, #machine{mod=Mod, sid=Sid0}=S) ->
    %% out-of-bound message

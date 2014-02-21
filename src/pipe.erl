@@ -21,22 +21,23 @@
 -include("pipe.hrl").
 
 -export([
-   % pipe / state / pipeline management api
-   start/3,
-   start/4,
-   start_link/3,
-   start_link/4,
-   spawn/1,
-   spawn_link/1,
-   spawn_monitor/1,
-   bind/2,
-   bind/3,
-   make/1,
-   free/1,
-   % 
-   monitor/1
+   % pipe management interface
+   start/3
+  ,start/4
+  ,start_link/3
+  ,start_link/4
+  ,spawn/1
+  ,spawn_link/1
+  ,spawn_monitor/1
+  ,bind/2
+  ,bind/3
+  ,make/1
+  ,free/1
+  ,monitor/1
   ,demonitor/1
-  ,flag/2
+  ,ioctl/2
+
+  % pipe i/o interface
   ,call/2
   ,call/3
   ,cast/2
@@ -45,24 +46,20 @@
   ,send/3
   ,ack/1
   ,ack/2
-
-
-  ,a/1,
-   a/2, 
-   a/3,
-   b/1,
-   b/2,
-   b/3, 
-   relay/2,
-   relay/3,
-   recv/0, 
-   recv/1,
-   recv/2,
-   recv/3,
-   ioctl/2,
-   stream/1,
-   stream/2,
-   behaviour_info/1
+  ,recv/0 
+  ,recv/1
+  ,recv/2
+  ,recv/3
+  ,a/1
+  ,a/2 
+  ,a/3
+  ,b/1
+  ,b/2
+  ,b/3
+  ,pid/1
+  ,tx/1
+  ,uref/1 
+  ,behaviour_info/1
 ]).
 
 -export_type([pipe/0]).
@@ -70,6 +67,7 @@
 -type(pipe() :: {pipe, proc(), proc()}).
 -type(proc() :: atom() | {atom(), atom()} | {global, atom()} | pid() | function()).
 -type(name() :: {local, atom()} | {global, atom()}).
+-type(tx()   :: {pid(), reference()} | {reference(), pid()} | pid()).
 
 %% process monitor
 -type(monitor() :: {reference(), pid() | node()}).
@@ -181,14 +179,15 @@ free(Pipeline)
    lists:foreach(fun free/1, Pipeline).
 
 %%
-%% return pid() of pipe processes
--spec(a/1 :: (pipe()) -> pid()).
--spec(b/1 :: (pipe()) -> pid()).
+%% ioctl interface
+-spec(ioctl/2 :: (proc(), atom() | {atom(), any()}) -> any()).
 
-a({pipe, A, _}) -> 
-   A.
-b({pipe, _, B}) -> 
-   B.
+ioctl(Pid, {Req, Val})
+ when is_atom(Req) ->
+   call(Pid, {ioctl, Req, Val});
+ioctl(Pid, Req)
+ when is_atom(Req) ->
+   call(Pid, {ioctl, Req}).
 
 %%
 %% monitor process or node. The process receives messages:
@@ -203,18 +202,17 @@ monitor(Pid)
          {Ref, Pid}
    catch error:_ ->
       % unable to set monitor, fall-back to node monitor
-      monitor(erlang:node(Pid))
+      pipe:monitor(erlang:node(Pid))
    end;
 
 monitor(Node)
  when is_atom(Node) ->
-   monitor_node(Node, true),
-   receive
-      {nodedown, Node} -> 
-         monitor_node(Node, false),
-         exit({nodedown, Node})
-   after 0 -> 
-      {erlang:make_ref(), Node}
+   case erlang:whereis(Node) of
+      undefined ->
+         monitor_node(Node, true),
+         {erlang:make_ref(), Node};
+      Pid       ->
+         pipe:monitor(Pid)
    end.
  
 %%
@@ -235,14 +233,6 @@ demonitor({_, Node})
       ok 
    end.
 
-%%
-%% set pipe flag(s) @todo - rename to ioctl
--spec(flag/2 :: (atom(), any()) -> ok).
-
-flag(credit, Value) ->
-   put({credit, default}, Value).
-
-
 
 %%
 %% make synchronous request to process
@@ -255,18 +245,18 @@ call(Pid, Msg, Timeout) ->
    Ref = {Tx, _} = pipe:monitor(Pid),
    catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
    receive
-      {Tx, Reply} ->
-         pipe:demonitor(Ref),
-         Reply;
-      {'DOWN', Tx, _, _, noconnection} ->
-         pipe:demonitor(Ref),
-         exit({nodedown, erlang:node(Pid)});
-      {'DOWN', Tx, _, _, Reason} ->
-         pipe:demonitor(Ref),
-         exit(Reason);
-      {nodedown, Node} ->
-         pipe:demonitor(Ref),
-         exit({nodedown, Node})
+   {Tx, Reply} ->
+      pipe:demonitor(Ref),
+      Reply;
+   {'DOWN', Tx, _, _, noconnection} ->
+      pipe:demonitor(Ref),
+      exit({nodedown, erlang:node(Pid)});
+   {'DOWN', Tx, _, _, Reason} ->
+      pipe:demonitor(Ref),
+      exit(Reason);
+   {nodedown, Node} ->
+      pipe:demonitor(Ref),
+      exit({nodedown, Node})
    after Timeout ->
       pipe:demonitor(Ref),
       exit(timeout)
@@ -300,34 +290,8 @@ cast(Pid, Msg, Opts) ->
 
 send(Pid, Msg) ->
    send(Pid, Msg, []).
-
 send(Pid, Msg, Opts) ->
    pipe_send(Pid, self(), Msg, io_flags(Opts)).
-
-%%
-%% acknowledge message
--spec(ack/1 :: (pid()) -> ok).
-
-ack({pipe, A, _}) ->
-   ack(A);
-ack(Pid) ->
-   ok.
- % when is_pid(Pid) ->
- %   ?FLOW_CTL(Pid, ?DEFAULT_DEBIT, C,
- %      if C == 1 -> 
- %            erlang:send(Pid, {'$pipe', '$debit', self(), ?DEFAULT_DEBIT}),
- %            ?DEFAULT_DEBIT;
- %         true   -> 
- %            C - 1
- %      end
- %   ),
- %   ok.
-
-ack({Pid, Ref}, Msg)
- when is_pid(Pid), is_reference(Ref) ->
-   erlang:send(Pid, {Ref, Msg}).
-
-
 
 %%
 %% send message through pipe
@@ -340,45 +304,49 @@ ack({Pid, Ref}, Msg)
 -spec(b/2 :: (pipe(), any()) -> ok).
 -spec(b/3 :: (pipe(), any(), list()) -> ok).
 
-a({pipe, A, _}, Msg) -> ok.
-   %do_send(A, self(), Msg, 0).
-a({pipe, A, _}, Msg, Opts) -> ok.
-%   do_send(A, self(), Msg, Opts).
+a({pipe, A, _}, Msg) ->
+   pipe:send(A, Msg).
+a({pipe, A, _}, Msg, Opts) ->
+   pipe:send(A, Msg, Opts).
 
-b({pipe, _, B}, Msg) -> ok.
-%   do_send(B, self(), Msg, 0).
-b({pipe, _, B}, Msg, Opts) -> ok.
-%   do_send(B, self(), Msg, Opts).
+b({pipe, _, B}, Msg) ->
+   pipe:send(B, Msg).
+b({pipe, _, B}, Msg, Opts) ->
+   pipe:send(B, Msg, Opts).
 
-% %%
-% %% send pipe message to process 
-% -spec(send/2 :: (proc(), any()) -> any()).
-% -spec(send/3 :: (proc(), any(), list()) -> any()).
-
-% send(_, undefined) ->
-%    ok;
-% send(Sink, Msg) ->
-%    do_send(Sink, self(), Msg, 0).
-
-% send(_, undefined, _Opts) ->
-%    ok;
-% send(Sink, Msg, Opts) ->
-%    do_send(Sink, self(), Msg, io_flags(Opts, 0)).
 
 %%
-%% relay pipe message
-%%    Options:
-%%       yield   - suspend current processes
-%%       connect - connect remote node
-%%       flow    - use flow control
--spec(relay/2 :: (pipe(), any()) -> any()).
--spec(relay/3 :: (pipe(), any(), list()) -> any()).
+%% acknowledge message / request
+-spec(ack/1 :: (pid()) -> ok).
+-spec(ack/2 :: (pipe() | tx(), any()) -> any()).
 
-relay({pipe, A, B}, Msg) -> ok.
-%   do_send(B, A, Msg, 0).
+ack({pipe, A, _}) ->
+   ack(A);
+ack({'$flow', {_, Pid}}) ->
+   send_flow_credit(Pid);   
+ack({'$flow', Pid}) ->
+   send_flow_credit(Pid);   
+ack(_) ->
+   ok.
 
-relay({pipe, A, B}, Msg, Opts) -> ok.
-%   do_send(B, A, Msg, io_flags(Opts, 0)).
+ack({pipe, A, _}, Msg) ->
+   ack(A, Msg);
+ack({'$flow', {_, Pid}=Tx}, Msg) ->
+   send_flow_credit(Pid),
+   ack(Tx, Msg);
+ack({'$flow', Pid}, Msg) ->
+   send_flow_credit(Pid),
+   ack(Pid, Msg);
+ack({Pid, Tx}, Msg)
+ when is_pid(Pid), is_reference(Tx) ->
+   % backward compatible with gen_server:reply
+   try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end;
+ack({Tx, Pid}, Msg)
+ when is_pid(Pid), is_reference(Tx) ->
+   try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end;
+ack(Pid, Msg)
+ when is_pid(Pid) orelse is_atom(Pid) ->
+   try erlang:send(Pid, Msg) catch _:_ -> Msg end.
 
 %%
 %% receive pipe message
@@ -397,45 +365,94 @@ recv(Timeout) ->
 recv(Timeout, Opts) ->
    receive
    {'$pipe', _Pid, Msg} ->
-      Msg
+      Msg;
+   {'$flow', Pid, D} ->
+      ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
+         erlang:min(?DEFAULT_CREDIT_A, C + D)
+      ),
+      recv(Timeout, Opts)
    after Timeout ->
-      recv_timeout(Opts)
+      recv_error(Opts, timeout)
    end.
 
 recv(Pid, Timeout, Opts) ->
+   Ref = {Tx, _} = pipe:monitor(Pid),
    receive
    {'$pipe', Pid, Msg} ->
-      Msg
+      Msg;
+   {'$flow', Any, D} ->
+      ?FLOW_CTL(Any, ?DEFAULT_CREDIT_A, C,
+         erlang:min(?DEFAULT_CREDIT_A, C + D)
+      ),
+      recv(Pid, Timeout, Opts);
+   {'DOWN', Tx, _, _, noconnection} ->
+      pipe:demonitor(Ref),
+      recv_error(Opts, {nodedown, erlang:node(Pid)});
+   {'DOWN', Tx, _, _, Reason} ->
+      pipe:demonitor(Ref),
+      recv_error(Opts, Reason);
+   {nodedown, Node} ->
+      pipe:demonitor(Ref),
+      recv_error(Opts, {nodedown, Node})
    after Timeout ->
-      recv_timeout(Opts)
+      recv_error(Opts, timeout)
    end.
    
-recv_timeout([noexit]) ->
-   {error, timeout};
-recv_timeout(_) ->
-   exit(timeout).
+recv_error([noexit], Reason) ->
+   {error, Reason};
+recv_error(_, Reason) ->
+   exit(Reason).
+
 
 %%
-%% ioctl interface
--spec(ioctl/2 :: (proc(), atom() | {atom(), any()}) -> any()).
+%% return pid() of pipe processes
+-spec(a/1 :: (pipe()) -> pid() | undefined).
+-spec(b/1 :: (pipe()) -> pid() | undefined).
 
-ioctl(Pid, {Req, Val})
- when is_atom(Req) ->
-   call(Pid, {ioctl, Req, Val});
-ioctl(Pid, Req)
- when is_atom(Req) ->
-   call(Pid, {ioctl, Req}).
+a({pipe, {_, A}, _})
+ when is_pid(A) -> 
+   A;
+a({pipe, {A, A}, _})
+ when is_pid(A) -> 
+   A;
+a({pipe, A, _}) ->
+   A. 
+b({pipe, _, B}) -> 
+   B.
 
 %%
-%% stream interface
--spec(stream/1 :: (timeout()) -> any()).
--spec(stream/2 :: (pid(), timeout()) -> any()).
+%% extract transaction pid
+-spec(pid/1 :: (pipe()) -> pid() | undefined).
 
-stream(Timeout) ->
-   stream:new(pipe:recv(Timeout), fun() -> stream(Timeout) end).
+pid(Pipe) ->
+   pipe:a(Pipe).
 
-stream(Pid, Timeout) ->
-   stream:new(pipe:recv(Pid, Timeout, []), fun() -> stream(Pid, Timeout) end).
+%%
+%% extract transaction reference
+-spec(tx/1 :: (pipe()) -> reference() | undefined).
+
+tx({pipe, {_Pid, Tx}, _})
+ when is_reference(Tx) ->
+   Tx;
+tx({pipe, {Tx, _Pid}, _})
+ when is_reference(Tx) ->
+   Tx;
+tx({pipe, _, _}) ->
+   undefined.
+
+%%
+%% universal transaction reference (external use)
+-spec(uref/1 :: (pipe()) -> binary()).
+
+uref(Pipe) ->
+   Tx   = erlang:term_to_binary({pipe:pid(Pipe), pipe:tx(Pipe)}),
+   case erlang:function_exported(crypto, hash, 2) of
+      true  -> btoh( crypto:hash(sha, Tx) );
+      false -> btoh( crypto:sha(Tx) )
+   end.
+
+btoh(X) ->
+   << <<(if A < 10 -> $0 + A; A >= 10 -> $a + (A - 10) end):8>> || <<A:4>> <=X >>.
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -448,22 +465,27 @@ stream(Pid, Timeout) ->
 pipe_send(Pid, Tx, Msg, Flags)
  when is_pid(Pid) ->
    try
-      pipe_send_msg(Pid, {'$pipe', Tx, Msg}, Flags band ?IO_NOCONNECT),
-      pipe_yield(Flags band ?IO_YIELD),
-      pipe_flow_ctrl(Pid, Flags band ?IO_FLOW),
+      case Flags band ?IO_FLOW of
+         0 ->
+            pipe_send_msg(Pid, {'$pipe', Tx, Msg}, Flags band ?IO_NOCONNECT),
+            pipe_yield(Flags band ?IO_YIELD);
+         _ ->
+            pipe_send_msg(Pid, {'$pipe', {'$flow', Tx}, Msg}, Flags band ?IO_NOCONNECT),
+            pipe_yield(Flags band ?IO_YIELD),
+            use_flow_credit(Pid)
+      end,
       Msg
    catch error:_ ->
       Msg
    end;
-
 pipe_send(Fun, Tx, Msg, Flags)
  when is_function(Fun) ->
    pipe_send(Fun(Msg), Tx, Msg, Flags);
+pipe_send(undefined, _Tx, Msg, _Flags) ->
+   Msg;
 pipe_send(Name, Tx, Msg, Flags)
  when is_atom(Name) ->
-   pipe_send(erlang:whereis(Name), Tx, Msg, Flags);
-pipe_send(undefined, _Tx, Msg, _Flags) ->
-   Msg.
+   pipe_send(erlang:whereis(Name), Tx, Msg, Flags).
 
 
 %%
@@ -477,14 +499,6 @@ pipe_send_msg(Pid, Msg, _) ->
 %% yield current process
 pipe_yield(0) -> ok;
 pipe_yield(_) -> erlang:yield().
-
-%%
-%% flow control
-pipe_flow_ctrl(_Pid, 0) ->
-   ok;
-pipe_flow_ctrl(Pid,  _) ->
-   % @todo do not use credit if destination itself
-   credit_withdraw(Pid).
 
 
 %%
@@ -501,7 +515,6 @@ io_flags([_|T], Flags) ->
    io_flags(T, Flags);
 io_flags([], Flags) ->
    Flags.
-
 
 %%
 %% pipe loop
@@ -522,34 +535,37 @@ pipe_loop(Fun, A, B) ->
    {'$pipe', Tx, {ioctl, b}} ->
       ack(Tx, {ok, B}),
       pipe_loop(Fun, A, B);
-
-   {'$pipe', Pid, '$free'} ->
+   {'$pipe', Tx, {ioctl, _, _}} ->
+      ack(Tx, {error, not_supported}),
+      pipe_loop(Fun, A, B);
+   {'$pipe', _Pid, '$free'} ->
       ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
       ok;
-
-   % {'$pipe', '$debit', Pid, D} ->
-   %    ?FLOW_CTL(Pid, ?DEFAULT_CREDIT, C,
-   %       erlang:min(?DEFAULT_CREDIT, C + D)
-   %    ),
-   %    pipe_loop(Fun, A, B);
-   {'$pipe', B, Msg} ->
-      _ = pipe:send(A, Fun(Msg)),
+   {'$flow', Pid, D} ->
+      ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
+         erlang:min(?DEFAULT_CREDIT_A, C + D)
+      ),
       pipe_loop(Fun, A, B);
-   {'$pipe', _, Msg} ->
-      _ = pipe:send(B, Fun(Msg)),
-      %pipe:ack(S),
+   {'$pipe', Tx, Msg} ->
+      _ = pipe:send(pipe_route_to(Tx, A, B), Fun(Msg)),
+      pipe:ack(Tx),
       pipe_loop(Fun, A, B)
    end.
 
-
+pipe_route_to(B, _A, B) ->
+   B;
+pipe_route_to({'$flow', B}, _A, B) ->
+   B;
+pipe_route_to(_, A, _B) ->
+   A.
 
 %%
 %% get credit value
-credit_amount(Pid) ->
+get_flow_credit(Pid) ->
    case get({credit, Pid}) of
       undefined ->
          case get({credit, default}) of
-            undefined -> ?DEFAULT_CREDIT;
+            undefined -> ?DEFAULT_CREDIT_A;
             X         -> X
          end;
       X ->
@@ -558,32 +574,40 @@ credit_amount(Pid) ->
 
 %%
 %% consume credit
-credit_withdraw(Pid) ->
-   case credit_amount(Pid) of
-      1 -> put({credit, Pid}, credit_recv(Pid));
+use_flow_credit(Pid) ->
+   case get_flow_credit(Pid) of
+      1 -> put({credit, Pid}, recv_flow_credit(Pid));
       X -> put({credit, Pid}, X - 1)
    end. 
 
-
 %%
-%% receive credit from recipient process
-credit_recv(Pid) ->
+%% receive credit from process
+recv_flow_credit(Pid) ->
    Ref = {Tx, _} = pipe:monitor(Pid),
    receive
-      {'$pipe', Pid, {credit, Credit}} ->
+      {'$flow', Pid, Credit} ->
          pipe:demonitor(Ref),
          Credit;
       {'DOWN', Tx, _, _, noconnection} ->
          pipe:demonitor(Ref),
-         exit({nodedown, erlang:node(Pid)});
-      {'DOWN', Tx, _, _, Reason} ->
+         ?DEFAULT_CREDIT_A;
+      {'DOWN', Tx, _, _, _Reason} ->
          pipe:demonitor(Ref),
-         exit(Reason);
-      {nodedown, Node} ->
+         ?DEFAULT_CREDIT_A;
+      {nodedown, _Node} ->
          pipe:demonitor(Ref),
-         exit({nodedown, Node})
-   % after Timeout ->
-   %    pipe:demonitor(Ref),
-   %    exit(timeout)
+         ?DEFAULT_CREDIT_A
    end.   
+
+%%
+%% send credit to process
+send_flow_credit(Pid) ->
+   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_B, C,
+      if C == 1 -> 
+            erlang:send(Pid, {'$flow', self(), ?DEFAULT_CREDIT_B}),
+            ?DEFAULT_CREDIT_B;
+         true   -> 
+            C - 1
+      end
+   ).
 

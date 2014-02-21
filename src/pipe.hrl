@@ -51,7 +51,6 @@
 
 %%
 %%
--define(DEFAULT_CREDIT,   4).
+-define(DEFAULT_CREDIT_A,   4).
+-define(DEFAULT_CREDIT_B,   4).
 
-
--define(DEFAULT_DEBIT,    10).
