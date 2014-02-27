@@ -110,7 +110,7 @@ handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
       {noreply, S}
    end;
 
-handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
+handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
    % ioctl get request
    ?DEBUG("pipe ioctl ~p: req ~p~n", [self(), Req]),
    try
