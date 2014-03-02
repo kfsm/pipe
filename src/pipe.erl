@@ -36,6 +36,7 @@
   ,monitor/1
   ,demonitor/1
   ,ioctl/2
+  ,ioctl_/2
 
   % pipe i/o interface
   ,call/2
@@ -128,9 +129,9 @@ bind(b, Pids)
    bind(a, lists:last(Pids));
 
 bind(a, Pid) ->
-   ioctl(Pid, {a, self()});
+   ioctl_(Pid, {a, self()});
 bind(b, Pid) ->
-   ioctl(Pid, {b, self()}).
+   ioctl_(Pid, {b, self()}).
 
 bind(a, Pids, A)
  when is_list(Pids) ->
@@ -140,9 +141,9 @@ bind(a, Pids, A)
    bind(a, lists:last(Pids), A);
 
 bind(a, Pid, A) ->
-   ioctl(Pid, {a, A});
+   ioctl_(Pid, {a, A});
 bind(b, Pid, B) ->
-   ioctl(Pid, {b, B}).
+   ioctl_(Pid, {b, B}).
 
 %%
 %% make pipeline by binding stages
@@ -188,6 +189,12 @@ ioctl(Pid, {Req, Val})
 ioctl(Pid, Req)
  when is_atom(Req) ->
    call(Pid, {ioctl, Req}).
+
+ioctl_(Pid, {Req, Val})
+ when is_atom(Req) ->
+   send(Pid, {ioctl, Req, Val}), 
+   {ok, Val}.
+
 
 %%
 %% monitor process or node. The process receives messages:
