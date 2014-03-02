@@ -554,7 +554,7 @@ pipe_loop(Fun, A, B) ->
    {'$pipe', Tx, {ioctl, _, _}} ->
       ack(Tx, {error, not_supported}),
       pipe_loop(Fun, A, B);
-   {'$pipe', _Pid, '$free'} ->
+   {'$pipe', Pid, '$free'} ->
       ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
       ok;
    {'$flow', Pid, D} ->
