@@ -29,7 +29,6 @@
   ,spawn/1
   ,spawn_link/1
   ,spawn_monitor/1
-  ,spawn_opts/2
   ,bind/2
   ,bind/3
   ,make/1
@@ -104,14 +103,9 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% spawn pipe functor stage
-%%   Options
-%%     link
-%%     monitor
-%%     {init, Fun()}
 -spec(spawn/1         :: (function()) -> pid()).
 -spec(spawn_link/1    :: (function()) -> pid()).
 -spec(spawn_monitor/1 :: (function()) -> {pid(), reference()}).
--spec(spawn_opts/2    :: (function(), list()) -> pid() | {pid(), reference()}).
 
 spawn(Fun) ->
    erlang:spawn(fun() -> pipe_loop(Fun, undefined, undefined) end).
@@ -121,32 +115,6 @@ spawn_link(Fun) ->
 
 spawn_monitor(Fun) ->
    erlang:spawn_monitor(fun() -> pipe_loop(Fun, undefined, undefined) end).
-
-spawn_opts(Fun, Opts) ->
-   %% init function
-   Init = case lists:keyfind(init, 1, Opts) of
-      false  -> fun() -> ok end;
-      {_, X} -> X
-   end,
-   %% start function
-   Start = case lists:member(link, Opts) of
-      true  -> 
-         spawn_link;
-      false ->
-         case lists:member(monitor, Opts) of
-            true  ->
-               spawn_monitor;
-            false ->
-               spawn
-         end
-   end,
-   erlang:Start(
-      fun() -> 
-         Init(),
-         pipe_loop(Fun, undefined, undefined)
-      end
-   ).
-
 
 %%
 %% bind process to pipeline
