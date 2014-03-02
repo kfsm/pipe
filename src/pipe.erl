@@ -563,17 +563,35 @@ pipe_loop(Fun, A, B) ->
       ),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, Msg} ->
-      _ = pipe:send(pipe_route_to(Tx, A, B), Fun(Msg)),
+      case make_pipe(Tx, A, B) of
+         {pipe, _, undefined} ->
+            Fun(Msg);
+         {pipe, _, Side} ->
+            _ = pipe:send(Side, Fun(Msg))
+      end,
       pipe:ack(Tx),
       pipe_loop(Fun, A, B)
    end.
 
-pipe_route_to(B, _A, B) ->
-   B;
-pipe_route_to({'$flow', B}, _A, B) ->
-   B;
-pipe_route_to(_, A, _B) ->
-   A.
+%%
+%%
+make_pipe(Tx, A, B)
+ when Tx =:= A ->
+   {pipe, A, B};
+make_pipe(Tx, A, B)
+ when Tx =:= B ->
+   {pipe, B, A};
+make_pipe(Tx, undefined, B) ->
+   {pipe, Tx, B};
+make_pipe(Tx, A, _B) ->
+   {pipe, Tx, A}.
+
+% pipe_route_to(B, _A, B) ->
+%    B;
+% pipe_route_to({'$flow', B}, _A, B) ->
+%    B;
+% pipe_route_to(_, A, _B) ->
+%    A.
 
 %%
 %% get credit value
