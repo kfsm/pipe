@@ -29,6 +29,7 @@
   ,spawn/1
   ,spawn_link/1
   ,spawn_monitor/1
+  ,loop/1
   ,bind/2
   ,bind/3
   ,make/1
@@ -108,13 +109,21 @@ start_link(Name, Mod, Args, Opts) ->
 -spec(spawn_monitor/1 :: (function()) -> {pid(), reference()}).
 
 spawn(Fun) ->
-   erlang:spawn(fun() -> pipe_loop(Fun, undefined, undefined) end).
+   erlang:spawn(fun() -> loop(Fun) end).
 
 spawn_link(Fun) ->
-   erlang:spawn_link(fun() -> pipe_loop(Fun, undefined, undefined) end).
+   erlang:spawn_link(fun() -> loop(Fun) end).
 
 spawn_monitor(Fun) ->
-   erlang:spawn_monitor(fun() -> pipe_loop(Fun, undefined, undefined) end).
+   erlang:spawn_monitor(fun() -> loop(Fun) end).
+
+%%
+%% pipe loop
+-spec(loop/1 :: (function()) -> any()).
+
+loop(Fun) ->
+   pipe_loop(Fun, undefined, undefined).
+
 
 %%
 %% bind process to pipeline
