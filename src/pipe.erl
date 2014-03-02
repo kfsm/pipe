@@ -570,7 +570,7 @@ pipe_loop(Fun, A, B) ->
       pipe:ack(Tx),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, Msg} ->
-      pipe:send(A, Fun(Msg)),
+      pipe:send(B, Fun(Msg)),
       pipe:ack(Tx),
       pipe_loop(Fun, A, B)
    end.
