@@ -252,6 +252,8 @@ demonitor({_, Node})
 
 %%
 %% make synchronous request to process
+%%
+%% @todo: fix {nodedown, a} exit signal if no process
 -spec(call/2 :: (proc(), any()) -> any()).
 -spec(call/3 :: (proc(), any(), timeout()) -> any()).
 
