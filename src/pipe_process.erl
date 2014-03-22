@@ -32,11 +32,16 @@
 
 %% internal state
 -record(machine, {
-   mod   :: atom(),  %% FSM implementation
-   sid   :: atom(),  %% FSM state (transition function)
-   state :: any(),   %% FSM internal data structure
-   a     :: pid(),   %% pipe side (a) // source
-   b     :: pid()    %% pipe side (b) // sink
+   mod   = undefined :: atom()  %% FSM implementation
+  ,sid   = undefined :: atom()  %% FSM state (transition function)
+  ,state = undefined :: any()   %% FSM internal data structure
+  ,a     = undefined :: pid()   %% pipe side (a) // source
+  ,b     = undefined :: pid()   %% pipe side (b) // sink
+
+  ,rate    = undefined :: integer() %% max execution rate 
+  ,period  = undefined :: integer() %% period
+  ,tick    = undefined :: integer() %% current execution 
+  ,time    = undefined :: any()     %% deadline for current period  
 }).
 
 %%%----------------------------------------------------------------------------   
@@ -64,17 +69,10 @@ terminate(Reason, #machine{mod=Mod}=S) ->
 
 %%
 %%
-handle_call(Msg0, Tx, #machine{mod=Mod, sid=Sid0}=S) ->
+handle_call(Msg, Tx, #machine{}=S) ->
    % synchronous out-of-bound call to machine   
-   ?DEBUG("pipe call ~p: tx ~p, msg ~p~n", [self(), Tx, Msg0]),
-   case Mod:Sid0(Msg0, make_pipe(Tx, S#machine.a, S#machine.b), S#machine.state) of
-      {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
-      {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
-      {stop, Reason, State} ->
-         {stop, Reason, S#machine{state=State}}
-   end.
+   ?DEBUG("pipe call ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
+   run(Msg, make_pipe(Tx, S#machine.a, S#machine.b), S).
 
 %%
 %%
@@ -98,6 +96,19 @@ handle_info({'$pipe', Tx, {ioctl, b, Pid}}, S) ->
 handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S};
+
+handle_info({'$pipe', Tx, {ioctl, rate, {Rate, Period}}}, S) ->
+   ?DEBUG("pipe ~p: execution rate ~p", [self(), Rate]),
+   pipe:ack(Tx, ok),
+   {noreply, 
+      S#machine{
+         rate   = Rate
+        ,period = Period
+        ,tick   = 0
+        ,time   = next_period(Period)
+      }
+   };
+
 
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
    % ioctl set request
@@ -131,30 +142,15 @@ handle_info({'$flow', Pid, D}, S) ->
    ),
    {noreply, S};
 
-handle_info({'$pipe', Tx, Msg}, #machine{mod=Mod, sid=Sid0}=S) ->   
+handle_info({'$pipe', Tx, Msg}, #machine{}=S) ->   
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
-   case Mod:Sid0(Msg, make_pipe(Tx, S#machine.a, S#machine.b), S#machine.state) of
-      {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
-      {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
-      {stop, Reason, State} ->
-         {stop, Reason, S#machine{state=State}}
-   end;
+   run(Msg, make_pipe(Tx, S#machine.a, S#machine.b), S);
 
-
-handle_info(Msg0, #machine{mod=Mod, sid=Sid0}=S) ->
+handle_info(Msg, #machine{}=S) ->
    %% out-of-bound message
-   ?DEBUG("pipe recv ~p: msg ~p~n", [self(), Msg0]),
-   case Mod:Sid0(Msg0, {pipe, S#machine.a, S#machine.b}, S#machine.state) of
-      {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
-      {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
-      {stop, Reason, State} ->
-         {stop, Reason, S#machine{state=State}}
-   end.
+   ?DEBUG("pipe recv ~p: msg ~p~n", [self(), Msg]),
+   run(Msg, {pipe, S#machine.a, S#machine.b}, S).
 
 %%
 %%
@@ -168,7 +164,7 @@ code_change(_Vsn, S, _) ->
 %%%----------------------------------------------------------------------------   
 
 %%
-%%
+%% make pipe definition
 make_pipe(Tx, A, B)
  when Tx =:= A ->
    {pipe, A, B};
@@ -179,3 +175,52 @@ make_pipe(Tx, undefined, B) ->
    {pipe, Tx, B};
 make_pipe(Tx, A, _B) ->
    {pipe, Tx, A}.
+
+
+next_period(T) ->
+   {A0, B0, C0} = os:timestamp(),
+   {C1, Q0} = add_time(C0, T),
+   {B1, Q1} = add_time(B0, Q0),
+   {A1,  _} = add_time(A0, Q1),
+   {A1, B1, C1}.
+ 
+add_time(X, Y) ->
+   T = X + Y,
+   {T rem 1000000, T div 1000000}.
+
+%%
+%% run state machine
+run(Msg, Pipe, #machine{rate=undefined, mod=Mod, sid=Sid0}=S) ->
+   case Mod:Sid0(Msg, Pipe, S#machine.state) of
+      {next_state, Sid, State} ->
+         {noreply, S#machine{sid=Sid, state=State}};
+      {next_state, Sid, State, TorH} ->
+         {noreply, S#machine{sid=Sid, state=State}, TorH};
+      {stop, Reason, State} ->
+         {stop, Reason, S#machine{state=State}}
+   end;
+
+run(Msg, Pipe, #machine{mod=Mod, sid=Sid0, tick=Tick}=S)
+ when Tick < S#machine.rate ->
+   case Mod:Sid0(Msg, Pipe, S#machine.state) of
+      {next_state, Sid, State} ->
+         {noreply, S#machine{sid=Sid, state=State, tick=Tick + 1}};
+      {next_state, Sid, State, TorH} ->
+         {noreply, S#machine{sid=Sid, state=State, tick=Tick + 1}, TorH};
+      {stop, Reason, State} ->
+         {stop, Reason, S#machine{state=State}}
+   end;
+
+run(Msg, Pipe, #machine{time=Time}=S) ->
+   case os:timestamp() of
+      %% execution rate quota is exceeded
+      X when X < Time ->
+         timer:sleep(timer:now_diff(X, Time) div 1000),
+         run(Msg, Pipe, S#machine{tick=0, time=next_period(S#machine.period)});
+      %% 
+      _ ->
+         run(Msg, Pipe, S#machine{tick=0, time=next_period(S#machine.period)})
+   end.
+
+
+
