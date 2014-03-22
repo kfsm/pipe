@@ -50,8 +50,21 @@
 %%%
 %%%----------------------------------------------------------------------------   
 
-init([Mod, Args]) ->
-   init(Mod:init(Args), #machine{mod=Mod}).
+init([Mod, Args, Opts]) ->
+   case lists:keyfind(rate, 1, Opts) of
+      false ->
+         init(Mod:init(Args), #machine{mod=Mod});
+      {_, {Rate, Period}} ->
+         init(Mod:init(Args),
+            #machine{
+               mod    = Mod
+              ,rate   = Rate
+              ,period = Period
+              ,tick   = 0
+              ,time   = next_period(Period)
+            }
+         )
+   end.
 
 init({ok, Sid, State}, S) ->
    {ok, S#machine{sid=Sid, state=State}};

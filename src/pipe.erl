@@ -93,14 +93,14 @@ behaviour_info(_Other) ->
 -spec(start_link/4 :: (name(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
 
 start(Mod, Args, Opts) ->
-   gen_server:start(?CONFIG_PIPE, [Mod, Args], Opts).
+   gen_server:start(?CONFIG_PIPE, [Mod, Args, Opts], Opts).
 start(Name, Mod, Args, Opts) ->
-   gen_server:start(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
+   gen_server:start(Name, ?CONFIG_PIPE, [Mod, Args, Opts], Opts).
 
 start_link(Mod, Args, Opts) ->
-   gen_server:start_link(?CONFIG_PIPE, [Mod, Args], Opts).
+   gen_server:start_link(?CONFIG_PIPE, [Mod, Args, Opts], Opts).
 start_link(Name, Mod, Args, Opts) ->
-   gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
+   gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args, Opts], Opts).
 
 %%
 %% spawn pipe functor stage
