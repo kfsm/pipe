@@ -38,10 +38,10 @@
   ,a     = undefined :: pid()   %% pipe side (a) // source
   ,b     = undefined :: pid()   %% pipe side (b) // sink
 
-  ,rate    = undefined :: integer() %% max execution rate 
-  ,period  = undefined :: integer() %% period
-  ,tick    = undefined :: integer() %% current execution 
-  ,time    = undefined :: any()     %% deadline for current period  
+  ,interval = undefined :: integer() %% throttle time interval
+  ,capacity = undefined :: integer() %% pipe capacity at interval  
+  ,service  = undefined :: integer() %% pipe service rate   
+  ,deadline = undefined :: any()     %% deadline of current interval
 }).
 
 %%%----------------------------------------------------------------------------   
@@ -51,19 +51,11 @@
 %%%----------------------------------------------------------------------------   
 
 init([Mod, Args, Opts]) ->
-   case lists:keyfind(rate, 1, Opts) of
+   case lists:keyfind(capacity, 1, Opts) of
       false ->
          init(Mod:init(Args), #machine{mod=Mod});
-      {_, {Rate, Period}} ->
-         init(Mod:init(Args),
-            #machine{
-               mod    = Mod
-              ,rate   = Rate
-              ,period = Period
-              ,tick   = 0
-              ,time   = next_period(Period)
-            }
-         )
+      {_, Capacity} ->
+         init(Mod:init(Args), set_capacity(Capacity, #machine{mod=Mod}))
    end.
 
 init({ok, Sid, State}, S) ->
@@ -110,17 +102,10 @@ handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S};
 
-handle_info({'$pipe', Tx, {ioctl, rate, {Rate, Period}}}, S) ->
+handle_info({'$pipe', Tx, {ioctl, capacity, Capacity}}, S) ->
    ?DEBUG("pipe ~p: execution rate ~p", [self(), Rate]),
    pipe:ack(Tx, ok),
-   {noreply, 
-      S#machine{
-         rate   = Rate
-        ,period = Period
-        ,tick   = 0
-        ,time   = next_period(Period)
-      }
-   };
+   {noreply, set_capacity(Capacity, S)};
 
 
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
@@ -190,20 +175,9 @@ make_pipe(Tx, A, _B) ->
    {pipe, Tx, A}.
 
 
-next_period(T) ->
-   {A0, B0, C0} = os:timestamp(),
-   {C1, Q0} = add_time(C0, T),
-   {B1, Q1} = add_time(B0, Q0),
-   {A1,  _} = add_time(A0, Q1),
-   {A1, B1, C1}.
- 
-add_time(X, Y) ->
-   T = X + Y,
-   {T rem 1000000, T div 1000000}.
-
 %%
 %% run state machine
-run(Msg, Pipe, #machine{rate=undefined, mod=Mod, sid=Sid0}=S) ->
+run(Msg, Pipe, #machine{capacity=undefined, mod=Mod, sid=Sid0}=S) ->
    case Mod:Sid0(Msg, Pipe, S#machine.state) of
       {next_state, Sid, State} ->
          {noreply, S#machine{sid=Sid, state=State}};
@@ -213,27 +187,57 @@ run(Msg, Pipe, #machine{rate=undefined, mod=Mod, sid=Sid0}=S) ->
          {stop, Reason, S#machine{state=State}}
    end;
 
-run(Msg, Pipe, #machine{mod=Mod, sid=Sid0, tick=Tick}=S)
- when Tick < S#machine.rate ->
+run(Msg, Pipe, #machine{service=Rate, mod=Mod, sid=Sid0}=S)
+ when Rate < S#machine.capacity ->
+   % current service rate less then capacity
    case Mod:Sid0(Msg, Pipe, S#machine.state) of
       {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State, tick=Tick + 1}};
+         {noreply, S#machine{sid=Sid, state=State, service=Rate + 1}};
       {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State, tick=Tick + 1}, TorH};
+         {noreply, S#machine{sid=Sid, state=State, service=Rate + 1}, TorH};
       {stop, Reason, State} ->
          {stop, Reason, S#machine{state=State}}
    end;
 
-run(Msg, Pipe, #machine{time=Time}=S) ->
+run(Msg, Pipe, #machine{deadline=T}=S) ->
+   % capacity is exceeded, we have to suspend if deadline is not exceeded    
+   % Note: timeout approach is not suitable due to possible delay of timeout message
+   %       in process queue if execution rate is high.
    case os:timestamp() of
-      %% execution rate quota is exceeded
-      X when X < Time ->
-         timer:sleep(timer:now_diff(X, Time) div 1000),
-         run(Msg, Pipe, S#machine{tick=0, time=next_period(S#machine.period)});
-      %% 
+      % 
+      X when X < T ->
+         Timeout = timer:now_diff(X, T) div 1000,
+         timer:sleep(Timeout),
+         run(Msg, Pipe, S#machine{service=0, deadline=next_deadline(S#machine.interval)});
+      % 
       _ ->
-         run(Msg, Pipe, S#machine{tick=0, time=next_period(S#machine.period)})
+         run(Msg, Pipe, S#machine{service=0, deadline=next_deadline(S#machine.interval)})
    end.
+
+%%
+%%
+set_capacity({Capacity, Interval}, S) ->
+   S#machine{
+      capacity = Capacity
+     ,interval = Interval * 1000
+     ,service  = 0
+     ,deadline = next_deadline(Interval * 1000)
+   }.
+
+
+
+%%
+%%
+next_deadline(T) ->
+   {A0, B0, C0} = os:timestamp(),
+   {C1, Q0} = add_time(C0, T),
+   {B1, Q1} = add_time(B0, Q0),
+   {A1,  _} = add_time(A0, Q1),
+   {A1, B1, C1}.
+ 
+add_time(X, Y) ->
+   T = X + Y,
+   {T rem 1000000, T div 1000000}.
 
 
 
