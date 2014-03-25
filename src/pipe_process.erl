@@ -51,17 +51,23 @@
 %%%----------------------------------------------------------------------------   
 
 init([Mod, Args, Opts]) ->
-   case lists:keyfind(capacity, 1, Opts) of
-      false ->
-         init(Mod:init(Args), #machine{mod=Mod});
-      {_, Capacity} ->
-         init(Mod:init(Args), set_capacity(Capacity, #machine{mod=Mod}))
-   end.
+   init(Mod:init(Args), config(Opts, #machine{mod=Mod})).
 
 init({ok, Sid, State}, S) ->
    {ok, S#machine{sid=Sid, state=State}};
 init({error,  Reason}, _) ->
    {stop, Reason}.   
+
+config([{capacity, X} | Opts], S) ->
+   config(Opts, set_capacity(X, S));
+config([{flow,     X} | Opts], S) ->
+   put({credit, default}, X),
+   config(Opts, S);
+config([_ | Opts], S) ->
+   config(Opts, S);
+config([], S) ->
+   S.
+
 
 terminate(Reason, #machine{mod=Mod}=S) ->
    Mod:free(Reason, S#machine.state).   
@@ -88,7 +94,7 @@ handle_cast(_, S) ->
 %%
 handle_info({'$pipe', Tx, {ioctl, a, Pid}}, S) ->
    ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
-   pipe:ack(Tx, {ok, S#machine.a}),
+   % pipe:ack(Tx, {ok, S#machine.a}), -- bind is asynchronous and silent
    {noreply, S#machine{a=Pid}};
 handle_info({'$pipe', Tx, {ioctl, a}}, S) ->
    pipe:ack(Tx, {ok, S#machine.a}),
@@ -96,7 +102,7 @@ handle_info({'$pipe', Tx, {ioctl, a}}, S) ->
 
 handle_info({'$pipe', Tx, {ioctl, b, Pid}}, S) ->
    ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
-   pipe:ack(Tx, {ok, S#machine.b}),
+   % pipe:ack(Tx, {ok, S#machine.b}),  -- bind is asynchronous and silent
    {noreply, S#machine{b=Pid}};
 handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
@@ -135,9 +141,7 @@ handle_info({'$pipe', _Pid, '$free'}, S) ->
    {stop, normal, S};
 
 handle_info({'$flow', Pid, D}, S) ->
-   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
-      erlang:min(?DEFAULT_CREDIT_A, C + D)
-   ),
+   pipe_flow:credit(Pid, D),
    {noreply, S};
 
 handle_info({'$pipe', Tx, Msg}, #machine{}=S) ->   
@@ -206,7 +210,7 @@ run(Msg, Pipe, #machine{deadline=T}=S) ->
    case os:timestamp() of
       % 
       X when X < T ->
-         Timeout = timer:now_diff(X, T) div 1000,
+         Timeout = timer:now_diff(T, X) div 1000,
          timer:sleep(Timeout),
          run(Msg, Pipe, S#machine{service=0, deadline=next_deadline(S#machine.interval)});
       % 

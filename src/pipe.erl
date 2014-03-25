@@ -104,6 +104,7 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% spawn pipe functor stage
+%% @todo spawn_opt
 -spec(spawn/1         :: (function()) -> pid()).
 -spec(spawn_link/1    :: (function()) -> pid()).
 -spec(spawn_monitor/1 :: (function()) -> {pid(), reference()}).
@@ -189,8 +190,9 @@ free(Pipeline)
    lists:foreach(fun free/1, Pipeline).
 
 %%
-%% ioctl interface
--spec(ioctl/2 :: (proc(), atom() | {atom(), any()}) -> any()).
+%% ioctl interface (sync and async)
+-spec(ioctl/2  :: (proc(), atom() | {atom(), any()}) -> any()).
+-spec(ioctl_/2 :: (proc(), atom() | {atom(), any()}) -> any()).
 
 ioctl(Pid, {Req, Val})
  when is_atom(Req) ->
@@ -223,6 +225,7 @@ monitor(Pid)
 
 monitor(Node)
  when is_atom(Node) ->
+   %% @todo: if process is used by it's name then Node and Process cannot be detected
    case erlang:whereis(Node) of
       undefined ->
          monitor_node(Node, true),
@@ -341,19 +344,19 @@ b({pipe, _, B}, Msg, Opts) ->
 ack({pipe, A, _}) ->
    ack(A);
 ack({'$flow', {_, Pid}}) ->
-   send_flow_credit(Pid);   
+   pipe_flow:produce(Pid);  
 ack({'$flow', Pid}) ->
-   send_flow_credit(Pid);   
+   pipe_flow:produce(Pid);   
 ack(_) ->
    ok.
 
 ack({pipe, A, _}, Msg) ->
    ack(A, Msg);
 ack({'$flow', {_, Pid}=Tx}, Msg) ->
-   send_flow_credit(Pid),
+   pipe_flow:produce(Pid),
    ack(Tx, Msg);
 ack({'$flow', Pid}, Msg) ->
-   send_flow_credit(Pid),
+   pipe_flow:produce(Pid),
    ack(Pid, Msg);
 ack({Pid, Tx}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
@@ -385,9 +388,7 @@ recv(Timeout, Opts) ->
    {'$pipe', _Pid, Msg} ->
       Msg;
    {'$flow', Pid, D} ->
-      ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
-         erlang:min(?DEFAULT_CREDIT_A, C + D)
-      ),
+      pipe_flow:credit(Pid, D),
       recv(Timeout, Opts)
    after Timeout ->
       recv_error(Opts, timeout)
@@ -399,9 +400,7 @@ recv(Pid, Timeout, Opts) ->
    {'$pipe', Pid, Msg} ->
       Msg;
    {'$flow', Any, D} ->
-      ?FLOW_CTL(Any, ?DEFAULT_CREDIT_A, C,
-         erlang:min(?DEFAULT_CREDIT_A, C + D)
-      ),
+      pipe_flow:credit(Any, D),
       recv(Pid, Timeout, Opts);
    {'DOWN', Tx, _, _, noconnection} ->
       pipe:demonitor(Ref),
@@ -490,7 +489,7 @@ pipe_send(Pid, Tx, Msg, Flags)
          _ ->
             pipe_send_msg(Pid, {'$pipe', {'$flow', Tx}, Msg}, Flags band ?IO_NOCONNECT),
             pipe_yield(Flags band ?IO_YIELD),
-            use_flow_credit(Pid)
+            pipe_flow:consume(Pid)
       end,
       Msg
    catch error:_ ->
@@ -541,14 +540,14 @@ pipe_loop(Fun, A, B) ->
    %% binding
    {'$pipe', Tx, {ioctl, a, Pid}} ->
       ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
-      ack(Tx, {ok, A}),
+      % ack(Tx, {ok, A}),  -- bind is asynchronous and silent
       pipe_loop(Fun, Pid, B);
    {'$pipe', Tx, {ioctl, a}} ->
       ack(Tx, {ok, A}),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, {ioctl, b, Pid}} ->
       ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
-      ack(Tx, {ok, B}),
+      % ack(Tx, {ok, B}),  -- bind is asynchronous and silent
       pipe_loop(Fun, A, Pid);
    {'$pipe', Tx, {ioctl, b}} ->
       ack(Tx, {ok, B}),
@@ -560,9 +559,7 @@ pipe_loop(Fun, A, B) ->
       ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
       ok;
    {'$flow', Pid, D} ->
-      ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_A, C,
-         erlang:min(?DEFAULT_CREDIT_A, C + D)
-      ),
+      pipe_flow:credit(Pid, D),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, Msg} when Tx =:= B ->
       pipe:send(A, Fun(Msg)),
@@ -576,58 +573,3 @@ pipe_loop(Fun, A, B) ->
       pipe:ack(Tx),
       pipe_loop(Fun, A, B)
    end.
-
-
-
-%%
-%% get credit value
-get_flow_credit(Pid) ->
-   case get({credit, Pid}) of
-      undefined ->
-         case get({credit, default}) of
-            undefined -> ?DEFAULT_CREDIT_A;
-            X         -> X
-         end;
-      X ->
-         X
-   end.
-
-%%
-%% consume credit
-use_flow_credit(Pid) ->
-   case get_flow_credit(Pid) of
-      1 -> put({credit, Pid}, recv_flow_credit(Pid));
-      X -> put({credit, Pid}, X - 1)
-   end. 
-
-%%
-%% receive credit from process
-recv_flow_credit(Pid) ->
-   Ref = {Tx, _} = pipe:monitor(Pid),
-   receive
-      {'$flow', Pid, Credit} ->
-         pipe:demonitor(Ref),
-         Credit;
-      {'DOWN', Tx, _, _, noconnection} ->
-         pipe:demonitor(Ref),
-         ?DEFAULT_CREDIT_A;
-      {'DOWN', Tx, _, _, _Reason} ->
-         pipe:demonitor(Ref),
-         ?DEFAULT_CREDIT_A;
-      {nodedown, _Node} ->
-         pipe:demonitor(Ref),
-         ?DEFAULT_CREDIT_A
-   end.   
-
-%%
-%% send credit to process
-send_flow_credit(Pid) ->
-   ?FLOW_CTL(Pid, ?DEFAULT_CREDIT_B, C,
-      if C == 1 -> 
-            erlang:send(Pid, {'$flow', self(), ?DEFAULT_CREDIT_B}),
-            ?DEFAULT_CREDIT_B;
-         true   -> 
-            C - 1
-      end
-   ).
-

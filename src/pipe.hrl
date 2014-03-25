@@ -36,19 +36,6 @@
 -define(IO_NOCONNECT, 2).
 -define(IO_FLOW,      4).
 
-
-%%
-%% derived from RabbitMQ server credit_flow.erl
--define(FLOW_CTL(Pid, Default, Var, Expr),
-   begin
-     case get({credit, Pid}) of
-         undefined -> Var = Default;
-         Var       -> ok
-     end,
-     put({credit, Pid}, Expr)
-   end
-).
-
 %%
 %%
 -define(DEFAULT_CREDIT_A,   200).
