@@ -479,6 +479,7 @@ btoh(X) ->
 
 %%
 %% send message through pipe
+%% @todo: iterate flags and do commands (no need to integer convert)
 pipe_send(Pid, Tx, Msg, Flags)
  when is_pid(Pid) ->
    try
