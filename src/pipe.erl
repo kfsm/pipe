@@ -35,6 +35,7 @@
   ,make/1
   ,free/1
   ,monitor/1
+  ,monitor/2
   ,demonitor/1
   ,ioctl/2
   ,ioctl_/2
@@ -212,38 +213,32 @@ ioctl_(Pid, {Req, Val})
 %%   {'DOWN', monitor(), process, pid(), reason()}
 %%   {nodedown, monitor()}
 -spec(monitor/1 :: (pid()) -> monitor()).
+-spec(monitor/2 :: (atom(), pid()) -> monitor()).
 
-monitor(Pid)
- when is_pid(Pid) ->
+monitor(Pid) ->
+   pipe:monitor(process, Pid).
+
+monitor(process, Pid) ->
    try erlang:monitor(process, Pid) of
       Ref ->
-         {Ref, Pid}
+         {process, Ref, Pid}
    catch error:_ ->
       % unable to set monitor, fall-back to node monitor
-      pipe:monitor(erlang:node(Pid))
+      pipe:monitor(node, erlang:node(Pid))
    end;
 
-monitor(Node)
- when is_atom(Node) ->
-   %% @todo: if process is used by it's name then Node and Process cannot be detected
-   case erlang:whereis(Node) of
-      undefined ->
-         monitor_node(Node, true),
-         {erlang:make_ref(), Node};
-      Pid       ->
-         pipe:monitor(Pid)
-   end.
+monitor(node, Node) ->
+   monitor_node(Node, true),
+   {node, erlang:make_ref(), Node}.
  
 %%
 %% release process monitor
 -spec(demonitor/1 :: (monitor()) -> ok).
 
-demonitor({Ref, Pid})
- when is_pid(Pid) ->
+demonitor({process, Ref, _Pid}) ->
    erlang:demonitor(Ref, [flush]);
 
-demonitor({_, Node})
- when is_atom(Node) ->
+demonitor({node, _, Node}) ->
    monitor_node(Node, false),
    receive
       {nodedown, Node} -> 
@@ -263,7 +258,7 @@ demonitor({_, Node})
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
 call(Pid, Msg, Timeout) ->
-   Ref = {Tx, _} = pipe:monitor(Pid),
+   Ref = {_, Tx, _} = pipe:monitor(Pid),
    catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
    receive
    {Tx, Reply} ->
@@ -395,7 +390,7 @@ recv(Timeout, Opts) ->
    end.
 
 recv(Pid, Timeout, Opts) ->
-   Ref = {Tx, _} = pipe:monitor(Pid),
+   Ref = {_, Tx, _} = pipe:monitor(Pid),
    receive
    {'$pipe', Pid, Msg} ->
       Msg;
@@ -539,16 +534,14 @@ io_flags([], Flags) ->
 pipe_loop(Fun, A, B) ->
    receive
    %% binding
-   {'$pipe', Tx, {ioctl, a, Pid}} ->
+   {'$pipe', _Tx, {ioctl, a, Pid}} ->
       ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
-      % ack(Tx, {ok, A}),  -- bind is asynchronous and silent
       pipe_loop(Fun, Pid, B);
    {'$pipe', Tx, {ioctl, a}} ->
       ack(Tx, {ok, A}),
       pipe_loop(Fun, A, B);
-   {'$pipe', Tx, {ioctl, b, Pid}} ->
+   {'$pipe', _Tx, {ioctl, b, Pid}} ->
       ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
-      % ack(Tx, {ok, B}),  -- bind is asynchronous and silent
       pipe_loop(Fun, A, Pid);
    {'$pipe', Tx, {ioctl, b}} ->
       ack(Tx, {ok, B}),
@@ -556,7 +549,7 @@ pipe_loop(Fun, A, B) ->
    {'$pipe', Tx, {ioctl, _, _}} ->
       ack(Tx, {error, not_supported}),
       pipe_loop(Fun, A, B);
-   {'$pipe', Pid, '$free'} ->
+   {'$pipe', _Pid, '$free'} ->
       ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
       ok;
    {'$flow', Pid, D} ->

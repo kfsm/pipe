@@ -148,7 +148,7 @@ pipe_make_pipeline() ->
 pipe_monitor() ->
    Pid = pipe:spawn(fun(X) -> timer:sleep(500), exit(die) end),
    pipe:send(Pid, message),
-   {Ref, _} = pipe:monitor(Pid),
+   {_, Ref, _} = pipe:monitor(Pid),
    receive
       {'DOWN', Ref, process, Pid, _} ->
          oks
