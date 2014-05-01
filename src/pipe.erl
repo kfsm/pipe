@@ -45,8 +45,12 @@
   ,call/3
   ,cast/2
   ,cast/3
+  ,pcast/2
+  ,pcast/3
   ,send/2
   ,send/3
+  ,psend/2
+  ,psend/3
   ,ack/1
   ,ack/2
   ,recv/0 
@@ -250,15 +254,14 @@ demonitor({node, _, Node}) ->
 
 %%
 %% make synchronous request to process
-%%
-%% @todo: fix {nodedown, a} exit signal if no process
 -spec(call/2 :: (proc(), any()) -> any()).
 -spec(call/3 :: (proc(), any(), timeout()) -> any()).
 
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
 call(Pid, Msg, Timeout) ->
-   Ref = {_, Tx, _} = pipe:monitor(Pid),
+   %% @todo: fix node monitor, lookup only process node
+   Ref = {_, Tx, _} = pipe:monitor(process, Pid),
    catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
    receive
    {Tx, Reply} ->
@@ -291,9 +294,24 @@ cast(Pid, Msg) ->
    cast(Pid, Msg, []).
 
 cast(Pid, Msg, Opts) ->
-   Tx    = erlang:make_ref(),
+   Tx = erlang:make_ref(),
    pipe_send(Pid, {Tx, self()}, Msg, io_flags(Opts)),
    Tx.
+
+%%
+%% cast asynchronous request in parallel to processes
+%%   Options:
+%%      yield     - suspend current processes
+%%      noconnect - do not connect to remote node
+%%      flow      - use flow control
+-spec(pcast/2 :: ([proc()], any()) -> [reference()]).
+-spec(pcast/3 :: ([proc()], any(), list()) -> [reference()]).
+
+pcast(Pids, Msg) ->
+   pcast(Pids, Msg, []).
+
+pcast(Pids, Msg, Opts) ->
+   [cast(Pid, Msg, Opts) || Pid <- Pids].
 
 %%
 %% send asynchronous request to process 
@@ -301,13 +319,34 @@ cast(Pid, Msg, Opts) ->
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
 %%      flow      - use flow control
--spec(send/2 :: (proc(), any()) -> reference()).
--spec(send/3 :: (proc(), any(), list()) -> reference()).
+-spec(send/2 :: (proc(), any()) -> any()).
+-spec(send/3 :: (proc(), any(), list()) -> any()).
 
 send(Pid, Msg) ->
    send(Pid, Msg, []).
 send(Pid, Msg, Opts) ->
    pipe_send(Pid, self(), Msg, io_flags(Opts)).
+
+
+%%
+%% send asynchronous request in parallel to process 
+%%   Options:
+%%      yield     - suspend current processes
+%%      noconnect - do not connect to remote node
+%%      flow      - use flow control
+-spec(psend/2 :: ([proc()], any()) -> [reference()]).
+-spec(psend/3 :: ([proc()], any(), list()) -> [reference()]).
+
+psend(Pids, Msg) ->
+   psend(Pids, Msg, []).
+
+psend(Pids, Msg, Opts) ->
+   lists:foreach(
+      fun(Pid) -> send(Pid, Msg, Opts) end,
+      Pids
+   ),
+   Msg.
+
 
 %%
 %% send message through pipe
@@ -390,7 +429,8 @@ recv(Timeout, Opts) ->
    end.
 
 recv(Pid, Timeout, Opts) ->
-   Ref = {_, Tx, _} = pipe:monitor(Pid),
+   %% @todo: fix node monitor, lookup only process node
+   Ref  = {_, Tx, _} = pipe:monitor(process, Pid),
    receive
    {'$pipe', Pid, Msg} ->
       Msg;
