@@ -43,6 +43,8 @@
   % pipe i/o interface
   ,call/2
   ,call/3
+  ,pcall/3
+  ,pcall/4
   ,cast/2
   ,cast/3
   ,pcast/2
@@ -282,6 +284,17 @@ call(Pid, Msg, Timeout) ->
    end.
 
 %%
+%% make synchronous request in parallel to process(es)
+-spec(pcall/3 :: (pid(), [proc()], any()) -> any()).
+-spec(pcall/4 :: (pid(), [proc()], any(), timeout()) -> any()).
+
+pcall(Fsm, Pids, Req) ->
+   pcall(Fsm, Pids, Req, ?CONFIG_TIMEOUT).
+pcall(Fsm, Pids, Req, Timeout) ->
+   pipe:call(Fsm, {pcall, Pids, Req, Timeout}, infinity).
+
+
+%%
 %% cast asynchronous request to process
 %%   Options:
 %%      yield     - suspend current processes
@@ -304,14 +317,14 @@ cast(Pid, Msg, Opts) ->
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
 %%      flow      - use flow control
--spec(pcast/2 :: ([proc()], any()) -> [reference()]).
--spec(pcast/3 :: ([proc()], any(), list()) -> [reference()]).
+-spec(pcast/2 :: ([proc()], any()) -> [{reference(), pid()}]).
+-spec(pcast/3 :: ([proc()], any(), list()) -> [{reference(), pid()}]).
 
 pcast(Pids, Msg) ->
    pcast(Pids, Msg, []).
 
 pcast(Pids, Msg, Opts) ->
-   [cast(Pid, Msg, Opts) || Pid <- Pids].
+   [{cast(Pid, Msg, Opts), Pid} || Pid <- Pids].
 
 %%
 %% send asynchronous request to process 
