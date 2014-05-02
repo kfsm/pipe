@@ -290,7 +290,10 @@ call(Pid, Msg, Timeout) ->
 
 pcall(Fsm, Pids, Req) ->
    pcall(Fsm, Pids, Req, ?CONFIG_TIMEOUT).
-pcall(Fsm, Pids, Req, Timeout) ->
+
+pcall(_Fsm, [], _Req, _Timeout) ->
+   {[], []};
+pcall(Fsm, Pids, Req,  Timeout) ->
    pipe:call(Fsm, {pcall, Pids, Req, Timeout}, infinity).
 
 
