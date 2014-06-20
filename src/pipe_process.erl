@@ -172,8 +172,18 @@ run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
    case Mod:Sid0(Msg, Pipe, S#machine.state) of
       {next_state, Sid, State} ->
          {noreply, S#machine{sid=Sid, state=State}};
+
       {next_state, Sid, State, TorH} ->
          {noreply, S#machine{sid=Sid, state=State}, TorH};
+
+      {upgrade, New, Args} ->
+         case New:init(Args) of
+            {ok, Sid, State}  ->
+               {noreply, S#machine{mod=New, sid=Sid, state=State}};
+            {error, Reason} ->
+               {stop, Reason, S}
+         end;
+
       {stop, Reason, State} ->
          {stop, Reason, S#machine{state=State}}
    end.
