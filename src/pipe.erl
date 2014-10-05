@@ -449,8 +449,10 @@ recv(Pid, Timeout, Opts) ->
    Ref  = {_, Tx, _} = pipe:monitor(process, Pid),
    receive
    {'$pipe', Pid, Msg} ->
+      pipe:demonitor(Ref),
       Msg;
    {'$flow', Any, D} ->
+      pipe:demonitor(Ref),
       pipe_flow:credit(Any, D),
       recv(Pid, Timeout, Opts);
    {'DOWN', Tx, _, _, noconnection} ->

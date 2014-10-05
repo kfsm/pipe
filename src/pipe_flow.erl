@@ -80,7 +80,7 @@ credit(Pid, Value) ->
 -spec(recv/2 :: (pid(), timeout()) -> integer() | undefined). 
 
 recv(Pid, Timeout) ->
-   Ref = {Tx, _} = pipe:monitor(Pid),
+   Ref = {_, Tx, _} = pipe:monitor(Pid),
    receive
       {'$flow', Pid, Credit} ->
          pipe:demonitor(Ref),
