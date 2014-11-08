@@ -613,8 +613,9 @@ pipe_loop(Fun, A, B) ->
    {'$flow', Pid, D} ->
       pipe_flow:credit(Pid, D),
       pipe_loop(Fun, A, B);
-   {'$pipe', Tx, Msg} when Tx =:= B ->
+   {'$pipe', Tx, Msg} when Tx =:= B orelse B =:= undefined ->
       pipe:send(A, Fun(Msg)),
+      pipe:ack(Tx),
       pipe_loop(Fun, A, B);
    {'$pipe', {'$flow', Tx}, Msg} when Tx =:= B ->
       pipe:send(A, Fun(Msg)),

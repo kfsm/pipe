@@ -1,8 +1,6 @@
 # pipe - process i/o protocol.
 
-The library implements alternative  inter process communication protocol.
-The major objective is eliminate difference between synchronous, asynchronous 
-and out-of-bound messages handling.
+The library implements alternative inter process communication protocol including flow control support. The major objective is eliminate difference between synchronous, asynchronous and out-of-bound messages handling.
 
 ## Background
 
@@ -17,8 +15,7 @@ response or timeouts. The synchronous is a typical scenario for client - server
 interactions.
 
 ```
-pipe:call(...)
-pipe:ack(...) 
+pipe:call(...)  <----->  pipe:ack(...) 
 ```
 
 ### asynchronous 
@@ -31,8 +28,7 @@ towards multiple recipients  (e.g. asynchronous external I/O, _long-lasting_
 requests).
 
 ```
-pipe:cast(...)
-pipe:ack(...)
+pipe:cast(...) <-----> pipe:ack(...)
 ```
 
 ### out-of-bound
@@ -42,8 +38,7 @@ message, the originator processes do not have intent to to track results of
 service execution (fire-and-forget mode).
 
 ```
-pipe:send(...)
-pipe:ack(...)  %% only flow control
+pipe:send(...) ------> [pipe:ack(...)] %% only if flow control is needed
 ```
 
 ### pipeline
@@ -62,13 +57,8 @@ pipe:b(...)
 
 ## Processes
 
-RAW process vs pipe / fsm
-
 
 ## Message passing protocol
-
-
-
 
 The message is Erlang tuple ```{'$pipe', tx(), any()}```.
 
@@ -91,19 +81,10 @@ The message is Erlang tuple ```{'$pipe', tx(), any()}```.
 ```tx() :: pid()```
 
 
-
-
 Options:
  - _yield_ yield current process
  - _noconnect_ do not connect to remote node
  - _flow_ use credit base flow control
-
-Message structure
-
-
-
-
-
 
 
 ### Flow control
@@ -113,12 +94,8 @@ Consume credit:
    - send
 
 Gain credit:
-   
    a    -
    ack  - 
-
-
-
 
 
 ## Pipeline
