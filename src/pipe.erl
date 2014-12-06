@@ -614,15 +614,21 @@ pipe_loop(Fun, A, B) ->
       pipe_flow:credit(Pid, D),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, Msg} when Tx =:= B orelse B =:= undefined ->
-      pipe:send(A, Fun(Msg)),
+      maybe_send(A, Fun(Msg)),
       pipe:ack(Tx),
       pipe_loop(Fun, A, B);
    {'$pipe', {'$flow', Tx}, Msg} when Tx =:= B ->
-      pipe:send(A, Fun(Msg)),
+      maybe_send(A, Fun(Msg)),
       pipe:ack(Tx),
       pipe_loop(Fun, A, B);
    {'$pipe', Tx, Msg} ->
-      pipe:send(B, Fun(Msg)),
+      maybe_send(B, Fun(Msg)),
       pipe:ack(Tx),
       pipe_loop(Fun, A, B)
    end.
+
+maybe_send(_Pid, undefined) ->
+   ok;
+maybe_send(Pid,  Msg) ->
+   pipe:send(Pid, Msg).
+
