@@ -153,9 +153,9 @@ bind(b, Pid) ->
 bind(a, Pids, A)
  when is_list(Pids) ->
    bind(a, hd(Pids), A);
-bind(a, Pids, A)
+bind(b, Pids, A)
  when is_list(Pids) ->
-   bind(a, lists:last(Pids), A);
+   bind(b, lists:last(Pids), A);
 
 bind(a, Pid, A) ->
    ioctl_(Pid, {a, A});
