@@ -375,8 +375,16 @@ psend(Pids, Msg, Opts) ->
 -spec(b/2 :: (pipe(), any()) -> ok).
 -spec(b/3 :: (pipe(), any(), list()) -> ok).
 
-a({pipe, A, _}, Msg) ->
-   pipe:send(A, Msg).
+a({pipe, Pid, _}, Msg)
+ when is_pid(Pid) orelse is_atom(Pid) ->
+   pipe:send(Pid, Msg);
+a({pipe, {Pid, Tx}, _}, Msg)
+ when is_pid(Pid), is_reference(Tx) ->
+   pipe:send(Pid, {Tx, Msg});
+a({pipe, {Tx, Pid}, _}, Msg)
+ when is_pid(Pid), is_reference(Tx) ->
+   pipe:send(Pid, {Tx, Msg}).
+
 a({pipe, A, _}, Msg, Opts) ->
    pipe:send(A, Msg, Opts).
 
