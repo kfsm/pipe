@@ -380,10 +380,10 @@ a({pipe, Pid, _}, Msg)
    pipe:send(Pid, Msg);
 a({pipe, {Pid, Tx}, _}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
-   pipe:send(Pid, {Tx, Msg});
+   try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end;
 a({pipe, {Tx, Pid}, _}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
-   pipe:send(Pid, {Tx, Msg}).
+   try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end.
 
 a({pipe, A, _}, Msg, Opts) ->
    pipe:send(A, Msg, Opts).
