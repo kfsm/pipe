@@ -1,7 +1,7 @@
-{application, pipe,
+{application, mux,
    [
-      {description, "process pipe library"},
-      {vsn,         "0.7.0"},
+      {description, "pipe multiplex example"},
+      {vsn,         "0.0.0"},
       {modules,     []},
       {registered,  []},
       {applications,[

@@ -51,6 +51,8 @@
   ,pcast/3
   ,send/2
   ,send/3
+  ,emit/3
+  ,emit/4
   ,psend/2
   ,psend/3
   ,ack/1
@@ -87,7 +89,8 @@ behaviour_info(callbacks) ->
    [
       {init,  1}
      ,{free,  2}
-     ,{ioctl, 2}
+     % ,{ioctl, 2} [optional ioctl handler]
+     % ,{state, 3} [state handler]
    ];
 behaviour_info(_Other) ->
    undefined.
@@ -343,6 +346,16 @@ send(Pid, Msg) ->
 send(Pid, Msg, Opts) ->
    pipe_send(Pid, self(), Msg, io_flags(Opts)).
 
+%%
+%% send asynchronous request to process using existed pipe instance
+-spec(emit/3 :: (pipe(), proc(), any()) -> any()).
+-spec(emit/4 :: (pipe(), proc(), any(), list()) -> any()).
+
+emit(Pipe, Pid, Msg) ->
+   emit(Pipe, Pid, Msg, []).
+
+emit({pipe, A, _}, Pid, Msg, Opts) ->
+   pipe_send(Pid, A, Msg, io_flags(Opts)).
 
 %%
 %% send asynchronous request in parallel to process 

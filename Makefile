@@ -29,6 +29,7 @@ EFLAGS = \
 	-pa ./ebin \
 	-pa deps/*/ebin \
 	-pa apps/*/ebin \
+	-pa examples/*/ebin \
 	-kernel inet_dist_listen_min 32100 \
 	-kernel inet_dist_listen_max 32199 \
 	+P 1000000 \
