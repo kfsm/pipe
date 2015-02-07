@@ -29,7 +29,6 @@
 %% default pipe timeout
 -define(CONFIG_TIMEOUT,  5000).
 
-
 %%
 %% I/O flags 
 -define(IO_YIELD,     1).
@@ -40,4 +39,9 @@
 %%
 -define(DEFAULT_CREDIT_A,   200).
 -define(DEFAULT_CREDIT_B,   200).
+
+%%
+%%
+-define(is_pid(X),  is_pid(X) orelse is_tuple(X) orelse is_atom(X)).
+
 

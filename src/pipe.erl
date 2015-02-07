@@ -555,7 +555,7 @@ btoh(X) ->
 %% send message through pipe
 %% @todo: iterate flags and do commands (no need to integer convert)
 pipe_send(Pid, Tx, Msg, Flags)
- when is_pid(Pid) ->
+ when ?is_pid(Pid) ->
    try
       case Flags band ?IO_FLOW of
          0 ->
@@ -572,12 +572,7 @@ pipe_send(Pid, Tx, Msg, Flags)
    end;
 pipe_send(Fun, Tx, Msg, Flags)
  when is_function(Fun) ->
-   pipe_send(Fun(Msg), Tx, Msg, Flags);
-pipe_send(undefined, _Tx, Msg, _Flags) ->
-   Msg;
-pipe_send(Name, Tx, Msg, Flags)
- when is_atom(Name) ->
-   pipe_send(erlang:whereis(Name), Tx, Msg, Flags).
+   pipe_send(Fun(Msg), Tx, Msg, Flags).
 
 
 %%
