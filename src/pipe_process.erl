@@ -163,11 +163,12 @@ make_pipe(Tx, A, B)
    {pipe, B, A};
 make_pipe(Tx, undefined, B) ->
    {pipe, Tx, B};
-% make_pipe(Tx, A, _B) ->
-%    %% this statement is not valid if process pool is used insight pipeline
-%    {pipe, Tx, A}.
-make_pipe(_Tx, A, B) ->
-   {pipe, A, B}.
+make_pipe(Tx, A, _B) ->
+   %% @todo: validate priority
+   %% this statement is not valid if process pool is used insight pipeline
+   {pipe, Tx, A}.
+% make_pipe(_Tx, A, B) ->
+%    {pipe, A, B}.
 
 
 %%

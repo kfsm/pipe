@@ -72,6 +72,10 @@
   ,uref/1 
   ,behaviour_info/1
 ]).
+-export([
+   start/0,
+   listen/2
+]).
 
 -export_type([pipe/0]).
 
@@ -647,4 +651,23 @@ maybe_send(_Pid, undefined) ->
    ok;
 maybe_send(Pid,  Msg) ->
    pipe:send(Pid, Msg).
+
+
+%%
+%%
+start() ->
+   application:start(pipe).
+
+
+%%
+%%
+listen(Id, Opts) ->
+   pipe_service_root_sup:init_service(Id, [{owner, self()} | Opts]).
+
+
+
+
+
+
+
 
