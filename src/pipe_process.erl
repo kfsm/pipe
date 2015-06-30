@@ -45,26 +45,29 @@
 %%%
 %%%----------------------------------------------------------------------------   
 
-init([Mod, Args, Opts]) ->
-   init(Mod:init(Args), config(Opts, #machine{mod=Mod})).
+%%
+%%
+init([Mod, Args]) ->
+   init(Mod:init(Args), #machine{mod=Mod}).
 
 init({ok, Sid, State}, S) ->
    {ok, S#machine{sid=Sid, state=State}};
 init({error,  Reason}, _) ->
    {stop, Reason}.   
 
-config([{flow, X} | Opts], S) ->
-   put({credit, default}, X),
-   config(Opts, S);
-config([_ | Opts], S) ->
-   config(Opts, S);
-config([], S) ->
-   S.
+%%
+%%
+terminate(Reason, #machine{mod=Mod, state=State, a = A, b = B}) ->
+   Mod:free(Reason, State),
+   free(A),
+   free(B),
+   ok.
 
-
-terminate(Reason, #machine{mod=Mod}=S) ->
-   Mod:free(Reason, S#machine.state).   
-
+free(undefined) ->
+   ok;
+free(Pid) ->
+   pipe:free(Pid).
+   
 %%%----------------------------------------------------------------------------   
 %%%
 %%% gen_server
@@ -127,9 +130,9 @@ handle_info({'$pipe', _Pid, '$free'}, S) ->
    ?DEBUG("pipe ~p: free", [self()]),
    {stop, normal, S};
 
-handle_info({'$flow', Pid, D}, S) ->
-   pipe_flow:credit(Pid, D),
-   {noreply, S};
+% handle_info({'$flow', Pid, D}, S) ->
+%    pipe_flow:credit(Pid, D),
+%    {noreply, S};
 
 handle_info({'$pipe', Tx, Msg}, #machine{}=S) ->   
    %% in-bound call to FSM
@@ -154,7 +157,6 @@ code_change(_Vsn, S, _) ->
 
 %%
 %% make pipe definition
-%% @todo: validate correctness of pipe binding
 make_pipe(Tx, A, B)
  when Tx =:= A ->
    {pipe, A, B};
@@ -164,12 +166,7 @@ make_pipe(Tx, A, B)
 make_pipe(Tx, undefined, B) ->
    {pipe, Tx, B};
 make_pipe(Tx, A, _B) ->
-   %% @todo: validate priority
-   %% this statement is not valid if process pool is used insight pipeline
    {pipe, Tx, A}.
-% make_pipe(_Tx, A, B) ->
-%    {pipe, A, B}.
-
 
 %%
 %% run state machine

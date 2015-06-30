@@ -20,16 +20,16 @@
 -module(pipe).
 -include("pipe.hrl").
 
+-export([start/0]).
+-export([behaviour_info/1]).
+%% pipe management interface
 -export([
-   % pipe management interface
    start/3
   ,start/4
   ,start_link/3
   ,start_link/4
   ,spawn/1
   ,spawn_link/1
-  ,spawn_monitor/1
-  ,loop/1
   ,bind/2
   ,bind/3
   ,make/1
@@ -39,22 +39,17 @@
   ,demonitor/1
   ,ioctl/2
   ,ioctl_/2
-
-  % pipe i/o interface
-  ,call/2
+]).
+%% pipe i/o interface
+-export([
+   call/2
   ,call/3
-  ,pcall/3
-  ,pcall/4
   ,cast/2
   ,cast/3
-  ,pcast/2
-  ,pcast/3
   ,send/2
   ,send/3
   ,emit/3
   ,emit/4
-  ,psend/2
-  ,psend/3
   ,ack/1
   ,ack/2
   ,recv/0 
@@ -69,79 +64,119 @@
   ,b/3
   ,pid/1
   ,tx/1
-  ,uref/1 
-  ,behaviour_info/1
 ]).
+%% pipeline interface
 -export([
-   start/0,
-   listen/2
+   spawner/2
+  ,spawner/3
+  ,spawn/2
+  ,spawn/3
 ]).
 
+%%
+%% data types
+-type(pipe()    :: {pipe, pid() | tx(), pid()}).
+-type(tx()      :: {pid(), reference()} | {reference(), pid()}).
+-type(monitor() :: {reference(), pid() | node()}).
 -export_type([pipe/0]).
 
--type(pipe() :: {pipe, proc(), proc()}).
--type(proc() :: atom() | {atom(), atom()} | {global, atom()} | pid() | function()).
--type(name() :: {local, atom()} | {global, atom()}).
--type(tx()   :: {pid(), reference()} | {reference(), pid()} | pid()).
-
-%% process monitor
--type(monitor() :: {reference(), pid() | node()}).
+%%%------------------------------------------------------------------
+%%%
+%%% pipe behavior interface
+%%%
+%%%------------------------------------------------------------------   
 
 %%
 %% pipe behavior
 behaviour_info(callbacks) ->
    [
+      %%
+      %% init pipe stage
+      %%
+      %% -spec(init/1 :: ([any()]) -> {ok, sid(), state()} | {stop, any()}).
       {init,  1}
+   
+      %%
+      %% free pipe stage
+      %%
+      %% -spec(free/2 :: (any(), state()) -> ok).
      ,{free,  2}
-     % ,{ioctl, 2} [optional ioctl handler]
-     % ,{state, 3} [state handler]
+
+      %%
+      %% optional state i/o control interface
+      %%
+      %% -spec(ioctl/2 :: (atom() | {atom(), any()}, state()) -> any() | state()).       
+      %%,{ioctl, 2}
+
+      %%
+      %% state message handler
+      %%
+      %% -spec(handler/3 :: (any(), pipe(), state()) -> {next_state, sid(), state()} 
+      %%                                             |  {stop, any(), state()} 
+      %%                                             |  {upgrade, atom(), [any()]}). 
    ];
 behaviour_info(_Other) ->
    undefined.
 
+
+%%
+%% RnD application start
+start() ->
+   application:start(pipe).
+
+
+%%%------------------------------------------------------------------
+%%%
+%%% pipe management interface
+%%%
+%%%------------------------------------------------------------------   
+
 %%
 %% start pipe stage / pipe state machine
 -spec(start/3 :: (atom(), list(), list()) -> {ok, pid()} | {error, any()}).
--spec(start/4 :: (name(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
+-spec(start/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/3 :: (atom(), list(), list()) -> {ok, pid()} | {error, any()}).
--spec(start_link/4 :: (name(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
+-spec(start_link/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
 
 start(Mod, Args, Opts) ->
-   gen_server:start(?CONFIG_PIPE, [Mod, Args, Opts], Opts).
+   gen_server:start(?CONFIG_PIPE, [Mod, Args], Opts).
 start(Name, Mod, Args, Opts) ->
-   gen_server:start(Name, ?CONFIG_PIPE, [Mod, Args, Opts], Opts).
+   gen_server:start(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
 
 start_link(Mod, Args, Opts) ->
-   gen_server:start_link(?CONFIG_PIPE, [Mod, Args, Opts], Opts).
+   gen_server:start_link(?CONFIG_PIPE, [Mod, Args], Opts).
 start_link(Name, Mod, Args, Opts) ->
-   gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args, Opts], Opts).
+   gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
 
 %%
 %% spawn pipe functor stage
-%% @todo spawn_opt
+%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg}
 -spec(spawn/1         :: (function()) -> pid()).
 -spec(spawn_link/1    :: (function()) -> pid()).
--spec(spawn_monitor/1 :: (function()) -> {pid(), reference()}).
 
 spawn(Fun) ->
-   erlang:spawn(fun() -> loop(Fun) end).
+   {ok, Pid} = start(pipe_funct, [Fun], []),
+   Pid.
 
 spawn_link(Fun) ->
-   erlang:spawn_link(fun() -> loop(Fun) end).
-
-spawn_monitor(Fun) ->
-   erlang:spawn_monitor(fun() -> loop(Fun) end).
+   {ok, Pid} = start_link(pipe_funct, [Fun], []),
+   Pid.
 
 %%
-%% pipe loop
--spec(loop/1 :: (function()) -> any()).
+%% terminate pipeline
+-spec(free/1 :: (pid() | [pid()]) -> ok).
 
-loop(Fun) ->
-   pipe_loop(Fun, undefined, undefined).
+free(Pid)
+ when is_pid(Pid) ->
+   erlang:send(Pid, {'$pipe', self(), '$free'}),
+   ok;
+free(Pipeline)
+ when is_list(Pipeline) ->
+   lists:foreach(fun free/1, Pipeline).
 
 
 %%
-%% bind process to pipeline
+%% bind stage to pipeline
 -spec(bind/2 :: (a | b, pid()) -> {ok, pid()}).
 -spec(bind/3 :: (a | b, pid(), pid()) -> {ok, pid()}).
 
@@ -150,7 +185,7 @@ bind(a, Pids)
    bind(a, hd(Pids));
 bind(b, Pids)
  when is_list(Pids) ->
-   bind(a, lists:last(Pids));
+   bind(b, lists:last(Pids)); 
 
 bind(a, Pid) ->
    ioctl_(Pid, {a, self()});
@@ -172,7 +207,7 @@ bind(b, Pid, B) ->
 %%
 %% make pipeline by binding stages
 %% return pipeline head
--spec(make/1 :: ([proc()]) -> pid()).
+-spec(make/1 :: ([pid()]) -> pid()).
 
 make(Pipeline) ->
    [Head | Tail] = lists:reverse(Pipeline),
@@ -187,26 +222,9 @@ make(Pipeline) ->
    ).
 
 %%
-%% terminate pipeline
--spec(free/1 :: (pid() | [proc()]) -> ok).
-
-free(Pid)
- when is_pid(Pid) ->
-   erlang:send(Pid, {'$pipe', self(), '$free'}),
-   ok;
-free({Pid, Ref})
- when is_pid(Pid) ->
-   _ = erlang:demonitor(Ref, [flush]),
-   erlang:send(Pid, {'$pipe', self(), '$free'}),
-   ok;
-free(Pipeline)
- when is_list(Pipeline) ->
-   lists:foreach(fun free/1, Pipeline).
-
-%%
 %% ioctl interface (sync and async)
--spec(ioctl/2  :: (proc(), atom() | {atom(), any()}) -> any()).
--spec(ioctl_/2 :: (proc(), atom() | {atom(), any()}) -> any()).
+-spec(ioctl/2  :: (pid(), atom() | {atom(), any()}) -> any()).
+-spec(ioctl_/2 :: (pid(), atom() | {atom(), any()}) -> any()).
 
 ioctl(Pid, {Req, Val})
  when is_atom(Req) ->
@@ -260,16 +278,21 @@ demonitor({node, _, Node}) ->
       ok 
    end.
 
+%%%------------------------------------------------------------------
+%%%
+%%% pipe i/o interface
+%%%
+%%%------------------------------------------------------------------   
+
 
 %%
 %% make synchronous request to process
--spec(call/2 :: (proc(), any()) -> any()).
--spec(call/3 :: (proc(), any(), timeout()) -> any()).
+-spec(call/2 :: (pid(), any()) -> any()).
+-spec(call/3 :: (pid(), any(), timeout()) -> any()).
 
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
 call(Pid, Msg, Timeout) ->
-   %% @todo: fix node monitor, lookup only process node
    Ref = {_, Tx, _} = pipe:monitor(process, Pid),
    catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
    receive
@@ -291,102 +314,50 @@ call(Pid, Msg, Timeout) ->
    end.
 
 %%
-%% make synchronous request in parallel to process(es)
--spec(pcall/3 :: (pid(), [proc()], any()) -> any()).
--spec(pcall/4 :: (pid(), [proc()], any(), timeout()) -> any()).
-
-pcall(Fsm, Pids, Req) ->
-   pcall(Fsm, Pids, Req, ?CONFIG_TIMEOUT).
-
-pcall(_Fsm, [], _Req, _Timeout) ->
-   {[], []};
-pcall(Fsm, Pids, Req,  Timeout) ->
-   pipe:call(Fsm, {pcall, Pids, Req, Timeout}, infinity).
-
-
-%%
 %% cast asynchronous request to process
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
-%%      flow      - use flow control
--spec(cast/2 :: (proc(), any()) -> reference()).
--spec(cast/3 :: (proc(), any(), list()) -> reference()).
+-spec(cast/2 :: (pid(), any()) -> reference()).
+-spec(cast/3 :: (pid(), any(), list()) -> reference()).
 
 cast(Pid, Msg) ->
    cast(Pid, Msg, []).
 
 cast(Pid, Msg, Opts) ->
    Tx = erlang:make_ref(),
-   pipe_send(Pid, {Tx, self()}, Msg, io_flags(Opts)),
+   pipe_send(Pid, {Tx, self()}, Msg, Opts),
    Tx.
-
-%%
-%% cast asynchronous request in parallel to processes
-%%   Options:
-%%      yield     - suspend current processes
-%%      noconnect - do not connect to remote node
-%%      flow      - use flow control
--spec(pcast/2 :: ([proc()], any()) -> [{reference(), pid()}]).
--spec(pcast/3 :: ([proc()], any(), list()) -> [{reference(), pid()}]).
-
-pcast(Pids, Msg) ->
-   pcast(Pids, Msg, []).
-
-pcast(Pids, Msg, Opts) ->
-   [{cast(Pid, Msg, Opts), Pid} || Pid <- Pids].
 
 %%
 %% send asynchronous request to process 
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
-%%      flow      - use flow control
--spec(send/2 :: (proc(), any()) -> any()).
--spec(send/3 :: (proc(), any(), list()) -> any()).
+-spec(send/2 :: (pid(), any()) -> any()).
+-spec(send/3 :: (pid(), any(), list()) -> any()).
 
 send(Pid, Msg) ->
    send(Pid, Msg, []).
 send(Pid, Msg, Opts) ->
-   pipe_send(Pid, self(), Msg, io_flags(Opts)).
+   pipe_send(Pid, self(), Msg, Opts).
 
 %%
 %% send asynchronous request to process using existed pipe instance
--spec(emit/3 :: (pipe(), proc(), any()) -> any()).
--spec(emit/4 :: (pipe(), proc(), any(), list()) -> any()).
+-spec(emit/3 :: (pipe(), pid(), any()) -> any()).
+-spec(emit/4 :: (pipe(), pid(), any(), list()) -> any()).
 
 emit(Pipe, Pid, Msg) ->
    emit(Pipe, Pid, Msg, []).
 
 emit({pipe, A, _}, Pid, Msg, Opts) ->
-   pipe_send(Pid, A, Msg, io_flags(Opts)).
-
-%%
-%% send asynchronous request in parallel to process 
-%%   Options:
-%%      yield     - suspend current processes
-%%      noconnect - do not connect to remote node
-%%      flow      - use flow control
--spec(psend/2 :: ([proc()], any()) -> [reference()]).
--spec(psend/3 :: ([proc()], any(), list()) -> [reference()]).
-
-psend(Pids, Msg) ->
-   psend(Pids, Msg, []).
-
-psend(Pids, Msg, Opts) ->
-   lists:foreach(
-      fun(Pid) -> send(Pid, Msg, Opts) end,
-      Pids
-   ),
-   Msg.
-
+   pipe_send(Pid, A, Msg, Opts).
 
 %%
 %% send message through pipe
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
-%%      flow      - use flow control
 -spec(a/2 :: (pipe(), any()) -> ok).
 -spec(a/3 :: (pipe(), any(), list()) -> ok).
 -spec(b/2 :: (pipe(), any()) -> ok).
@@ -407,9 +378,9 @@ a({pipe, A, _}, Msg, Opts) ->
 
 b({pipe, _, B}, Msg) ->
    pipe:send(B, Msg).
+
 b({pipe, _, B}, Msg, Opts) ->
    pipe:send(B, Msg, Opts).
-
 
 %%
 %% acknowledge message / request
@@ -418,21 +389,11 @@ b({pipe, _, B}, Msg, Opts) ->
 
 ack({pipe, A, _}) ->
    ack(A);
-ack({'$flow', {_, Pid}}) ->
-   pipe_flow:produce(Pid);  
-ack({'$flow', Pid}) ->
-   pipe_flow:produce(Pid);   
 ack(_) ->
    ok.
 
 ack({pipe, A, _}, Msg) ->
    ack(A, Msg);
-ack({'$flow', {_, Pid}=Tx}, Msg) ->
-   pipe_flow:produce(Pid),
-   ack(Tx, Msg);
-ack({'$flow', Pid}, Msg) ->
-   pipe_flow:produce(Pid),
-   ack(Pid, Msg);
 ack({Pid, Tx}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
    % backward compatible with gen_server:reply
@@ -446,7 +407,8 @@ ack(Pid, Msg)
 
 %%
 %% receive pipe message
-%%   noexit opts returns {error, timeout} instead of exit signal
+%%  Options
+%%    noexit - opts returns {error, timeout} instead of exit signal
 -spec(recv/0 :: () -> any()).
 -spec(recv/1 :: (timeout()) -> any()).
 -spec(recv/2 :: (timeout(), list()) -> any()).
@@ -461,25 +423,17 @@ recv(Timeout) ->
 recv(Timeout, Opts) ->
    receive
    {'$pipe', _Pid, Msg} ->
-      Msg;
-   {'$flow', Pid, D} ->
-      pipe_flow:credit(Pid, D),
-      recv(Timeout, Opts)
+      Msg
    after Timeout ->
       recv_error(Opts, timeout)
    end.
 
 recv(Pid, Timeout, Opts) ->
-   %% @todo: fix node monitor, lookup only process node
    Ref  = {_, Tx, _} = pipe:monitor(process, Pid),
    receive
    {'$pipe', Pid, Msg} ->
       pipe:demonitor(Ref),
       Msg;
-   {'$flow', Any, D} ->
-      pipe:demonitor(Ref),
-      pipe_flow:credit(Any, D),
-      recv(Pid, Timeout, Opts);
    {'DOWN', Tx, _, _, noconnection} ->
       pipe:demonitor(Ref),
       recv_error(Opts, {nodedown, erlang:node(Pid)});
@@ -535,19 +489,37 @@ tx({pipe, {Tx, _Pid}, _})
 tx({pipe, _, _}) ->
    undefined.
 
+%%%----------------------------------------------------------------------------   
+%%%
+%%% private
+%%%
+%%%----------------------------------------------------------------------------   
+
+
 %%
-%% universal transaction reference (external use)
--spec(uref/1 :: (pipe()) -> binary()).
+%% defines new pipeline
+-spec(spawner/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
+-spec(spawner/3 :: (atom(), atom(), list()) -> {ok, pid()} | {error, any()}).
 
-uref(Pipe) ->
-   Tx   = erlang:term_to_binary({pipe:pid(Pipe), pipe:tx(Pipe)}),
-   case erlang:function_exported(crypto, hash, 2) of
-      true  -> btoh( crypto:hash(sha, Tx) );
-      false -> btoh( crypto:sha(Tx) )
-   end.
+spawner(Name, Mod, Opts) ->
+   supervisor:start_child(pipe_spawner_sup, [Name, Mod, Opts]).
 
-btoh(X) ->
-   << <<(if A < 10 -> $0 + A; A >= 10 -> $a + (A - 10) end):8>> || <<A:4>> <=X >>.
+spawner(Mod, Opts) ->
+   supervisor:start_child(pipe_spawner_sup, [Mod, Opts]).
+
+%%
+%% spawn pipeline instance 
+%%  Flags
+%%    nopipe - do not bind process to new pipeline
+%%    iob2b  - bind b-to-b 
+-spec(spawn/2 :: (pid(), list()) -> pid()).
+-spec(spawn/3 :: (pid(), list(), list()) -> pid()).
+
+spawn(Pid, Opts) ->
+   pipe:spawn(Pid, Opts, []).
+
+spawn(Pid, Opts, Flags) ->
+   pipe:call(Pid, {spawn, Opts, Flags}).
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -557,117 +529,29 @@ btoh(X) ->
 
 %%
 %% send message through pipe
-%% @todo: iterate flags and do commands (no need to integer convert)
-pipe_send(Pid, Tx, Msg, Flags)
+pipe_send(Pid, Tx, Msg, Opts)
  when ?is_pid(Pid) ->
    try
-      case Flags band ?IO_FLOW of
-         0 ->
-            pipe_send_msg(Pid, {'$pipe', Tx, Msg}, Flags band ?IO_NOCONNECT),
-            pipe_yield(Flags band ?IO_YIELD);
-         _ ->
-            pipe_send_msg(Pid, {'$pipe', {'$flow', Tx}, Msg}, Flags band ?IO_NOCONNECT),
-            pipe_yield(Flags band ?IO_YIELD),
-            pipe_flow:consume(Pid)
-      end,
+      pipe_send_msg(Pid, {'$pipe', Tx, Msg}, lists:member(noconnect, Opts)),
+      pipe_yield(lists:member(yield, Opts)),
       Msg
    catch error:_ ->
       Msg
    end;
-pipe_send(Fun, Tx, Msg, Flags)
+pipe_send(Fun, Tx, Msg, Opts)
  when is_function(Fun) ->
-   pipe_send(Fun(Msg), Tx, Msg, Flags).
-
+   pipe_send(Fun(Msg), Tx, Msg, Opts).
 
 %%
 %% send message to pipe process
-pipe_send_msg(Pid, Msg, 0) ->
+pipe_send_msg(Pid, Msg, false) ->
    erlang:send(Pid, Msg, []);
-pipe_send_msg(Pid, Msg, _) ->
+pipe_send_msg(Pid, Msg, true) ->
    erlang:send(Pid, Msg, [noconnect]).
 
 %%
 %% yield current process
-pipe_yield(0) -> ok;
-pipe_yield(_) -> erlang:yield().
-
-
-%%
-%% send options
-io_flags(Flags) ->
-   io_flags(Flags, 0).
-io_flags([yield  |T], Flags) ->
-   io_flags(T, ?IO_YIELD bor Flags);
-io_flags([noconnect|T], Flags) ->
-   io_flags(T, ?IO_NOCONNECT bor Flags);
-io_flags([flow   |T], Flags) ->
-   io_flags(T, ?IO_FLOW bor Flags);
-io_flags([_|T], Flags) ->
-   io_flags(T, Flags);
-io_flags([], Flags) ->
-   Flags.
-
-%%
-%% pipe loop
-pipe_loop(Fun, A, B) ->
-   receive
-   %% binding
-   {'$pipe', _Tx, {ioctl, a, Pid}} ->
-      ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
-      pipe_loop(Fun, Pid, B);
-   {'$pipe', Tx, {ioctl, a}} ->
-      ack(Tx, {ok, A}),
-      pipe_loop(Fun, A, B);
-   {'$pipe', _Tx, {ioctl, b, Pid}} ->
-      ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
-      pipe_loop(Fun, A, Pid);
-   {'$pipe', Tx, {ioctl, b}} ->
-      ack(Tx, {ok, B}),
-      pipe_loop(Fun, A, B);
-   {'$pipe', Tx, {ioctl, _, _}} ->
-      ack(Tx, {error, not_supported}),
-      pipe_loop(Fun, A, B);
-   {'$pipe', _Pid, '$free'} ->
-      ?DEBUG("pipe ~p: free by ~p", [self(), Pid]),
-      ok;
-   {'$flow', Pid, D} ->
-      pipe_flow:credit(Pid, D),
-      pipe_loop(Fun, A, B);
-   {'$pipe', Tx, Msg} when Tx =:= B orelse B =:= undefined ->
-      maybe_send(A, Fun(Msg)),
-      pipe:ack(Tx),
-      pipe_loop(Fun, A, B);
-   {'$pipe', {'$flow', Tx}, Msg} when Tx =:= B ->
-      maybe_send(A, Fun(Msg)),
-      pipe:ack(Tx),
-      pipe_loop(Fun, A, B);
-   {'$pipe', Tx, Msg} ->
-      maybe_send(B, Fun(Msg)),
-      pipe:ack(Tx),
-      pipe_loop(Fun, A, B)
-   end.
-
-maybe_send(_Pid, undefined) ->
-   ok;
-maybe_send(Pid,  Msg) ->
-   pipe:send(Pid, Msg).
-
-
-%%
-%%
-start() ->
-   application:start(pipe).
-
-
-%%
-%%
-listen(Id, Opts) ->
-   pipe_service_root_sup:init_service(Id, [{owner, self()} | Opts]).
-
-
-
-
-
-
+pipe_yield(false) -> ok;
+pipe_yield(true)  -> erlang:yield().
 
 

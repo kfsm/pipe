@@ -39,7 +39,7 @@ init([]) ->
       {
          {one_for_one, 4, 1800},
          [
-            ?CHILD(supervisor, pipe_service_root_sup)
+            ?CHILD(supervisor, pipe_spawner_sup)
          ]
       }
    }.

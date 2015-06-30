@@ -16,16 +16,13 @@
 %%   limitations under the License.
 %%
 %% @description
-%%   service root supervisor
--module(pipe_service_root_sup).
+%%   acceptor factory - creates "application" protocol stack   
+-module(pipe_spawner_sup).
 -behaviour(supervisor).
 
 -export([
    start_link/0, 
-   init/1,
-   %% api
-   init_service/2,
-   free_service/1
+   init/1
 ]).
 
 %%
@@ -34,32 +31,17 @@
 -define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, temporary, 5000, Type, dynamic}).
 
 %%
+%%
 start_link() ->
    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-   
-init([]) -> 
+
+
+init([]) ->
    {ok,
       {
-         {one_for_one, 4, 1800},
-         []
+         {simple_one_for_one, 1000000, 1},
+         [
+            ?CHILD(worker, pipe_spawner)
+         ]
       }
    }.
-
-%%
-%% initialize net service
-init_service(Id, Opts) ->
-   supervisor:start_child(?MODULE, 
-      ?CHILD(supervisor, Id, pipe_service_sup, [Id, Opts])
-   ).
-
-%%
-%% terminate net service
-free_service(Id) ->
-   case supervisor:terminate_child(?MODULE, Id) of
-      ok    ->
-         supervisor:delete_child(?MODULE, Id);
-      Error ->
-         Error
-   end.
-
-
