@@ -81,12 +81,12 @@ handle({spawn, Opts1, Flags}, Pipe, #fsm{mod = Mod, opts = Opts0} = State) ->
 
       {_, true} ->
          pipe:a(Pipe,
-            pipe:make(Pids ++ [From])
+            {ok, pipe:make(Pids ++ [From])}
          );
 
       {_,    _} ->
          pipe:a(Pipe,
-            pipe:make(Pids)
+            {ok, pipe:make(Pids)}
          )
    end,
    {next_state, handle, State}.   

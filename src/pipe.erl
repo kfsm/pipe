@@ -512,8 +512,8 @@ spawner(Mod, Opts) ->
 %%  Flags
 %%    nopipe - do not bind process to new pipeline
 %%    iob2b  - bind b-to-b 
--spec(spawn/2 :: (pid(), list()) -> pid()).
--spec(spawn/3 :: (pid(), list(), list()) -> pid()).
+-spec(spawn/2 :: (pid(), list()) -> {ok, pid()} | {error, any()}).
+-spec(spawn/3 :: (pid(), list(), list()) -> {ok, pid()} | {error, any()}).
 
 spawn(Pid, Opts) ->
    pipe:spawn(Pid, Opts, []).
