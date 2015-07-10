@@ -90,6 +90,7 @@ handle_cast(_, S) ->
 %%
 handle_info({'$pipe', _Tx, {ioctl, a, Pid}}, S) ->
    ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
+   %% @todo: monitor
    {noreply, S#machine{a=Pid}};
 
 handle_info({'$pipe', Tx, {ioctl, a}}, S) ->
@@ -129,10 +130,6 @@ handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
 handle_info({'$pipe', _Pid, '$free'}, S) ->
    ?DEBUG("pipe ~p: free", [self()]),
    {stop, normal, S};
-
-% handle_info({'$flow', Pid, D}, S) ->
-%    pipe_flow:credit(Pid, D),
-%    {noreply, S};
 
 handle_info({'$pipe', Tx, Msg}, #machine{}=S) ->   
    %% in-bound call to FSM

@@ -25,13 +25,16 @@
    start_link/3, 
    init/1, 
    free/2, 
-   handle/3
+   ondemand/3,
+   pool/3
 ]).
 
 %% internal state
 -record(fsm, {
    mod      = undefined :: atom()
   ,opts     = undefined :: list()
+  ,n        = undefined :: integer()
+  ,pool     = []        :: list()
 }).
 
 %%%------------------------------------------------------------------
@@ -48,10 +51,13 @@ start_link(Name, Mod, Opts) ->
 
 
 init([Mod, Opts]) ->
-   {ok, handle,
+   hook_owner(Opts),
+   {State, N} = check_mode(Opts),
+   {ok, State,
       #fsm{
          mod  = Mod
-        ,opts = Opts  
+        ,opts = Opts
+        ,n    = N
       }
    }.
 
@@ -67,29 +73,33 @@ free(_Reason, _State) ->
 
 %%
 %%
-handle({spawn, Opts1, Flags}, Pipe, #fsm{mod = Mod, opts = Opts0} = State) ->
-   From = pipe:a(Pipe),
-   Pids = Mod:spawn(Opts0 ++ Opts1),
+ondemand({spawn, Opts1, Flags}, Pipe, #fsm{mod = Mod, opts = Opts0} = State) ->
+   Pids = make(Mod, Opts0 ++ Opts1),
+   pipe:a(Pipe, {ok, bind(Pipe, Pids, Flags)}),
+   {next_state, ondemand, State};
 
-   %% bind socket pipeline with owner process
-   case {flag(iob2b, Flags), flag(nopipe, Flags)} of
-      {true, _} ->
-         X = pipe:make(Pids),
-         _ = pipe:bind(b, Pids, From),
-         _ = pipe:bind(b, From, lists:last(Pids)),
-         pipe:a(Pipe, {ok, X});
+ondemand({'DOWN', _Ref, _Type, _Pid, _Reason}, _, State) ->
+   {stop, normal, State}.
 
-      {_, true} ->
-         pipe:a(Pipe,
-            {ok, pipe:make(Pids ++ [From])}
-         );
+%%
+%%
+pool({spawn, Opts1, Flags}, Pipe, #fsm{pool = [Head|Tail]} = State) ->
+   Bind = bind(Pipe, Head, Flags),
+   pipe:send(Bind, {spawn, Opts1}),
+   pipe:a(Pipe, {ok, Bind}),
+   {next_state, handle, State#fsm{pool = Tail}};
 
-      {_,    _} ->
-         pipe:a(Pipe,
-            {ok, pipe:make(Pids)}
-         )
-   end,
-   {next_state, handle, State}.   
+pool({spawn, Opts1, Flags}, Pipe, #fsm{mod = Mod, opts = Opts0, pool = []} = State) ->
+   Pids = make(Mod, Opts0),
+   Bind = bind(Pipe, Pids, Flags),
+   pipe:send(Bind, {spawn, Opts1}),
+   pipe:a(Pipe, {ok, Bind}),
+   {next_state, handle, State#fsm{pool = pool(State)}};
+
+pool({'DOWN', _Ref, _Type, _Pid, _Reason}, _, #fsm{pool = Pool} = State) ->
+   lists:foreach(fun pipe:free/1, Pool),
+   {stop, normal, State}.
+
 
 %%%------------------------------------------------------------------
 %%%
@@ -97,7 +107,59 @@ handle({spawn, Opts1, Flags}, Pipe, #fsm{mod = Mod, opts = Opts0} = State) ->
 %%%
 %%%------------------------------------------------------------------   
 
-flag(Key, Flags) ->
+%%
+%% monitor owner process
+hook_owner(Opts) ->
+   {owner, Pid} = lists:keyfind(owner, 1, Opts),
+   erlang:monitor(process, Pid).
+
+%%
+%% check spawner execution mode
+check_mode(Opts) ->
+   case lists:keyfind(pool, 1, Opts) of
+      false     -> 
+         {ondemand, 0};
+      {pool, N} ->
+         {pool, N}
+   end.
+
+%%
+%% check spawn flags
+is(Key, Flags) ->
    lists:member(Key, Flags).
 
+%%
+%% init pool
+pool(#fsm{mod = Mod, opts = Opts0, n = N}) ->
+   lists:map(
+      fun(_) -> 
+         make(Mod, Opts0) 
+      end,
+      lists:seq(1, N)
+   ).
+
+%%
+%% bind pipeline with owner process
+bind(Pipe, Pids, Flags) ->
+   From = pipe:a(Pipe),
+   case {is(iob2b, Flags), is(nopipe, Flags)} of
+      {true, _} ->
+         X = pipe:make(Pids),
+         _ = pipe:bind(b, lists:last(Pids), From),
+         _ = pipe:bind(b, From, lists:last(Pids)),
+         X;
+
+      {_, true} ->
+         pipe:make(Pids);
+
+      {_,   _} ->
+         pipe:make(Pids ++ [From])
+   end.
+
+%%
+%%
+make(default, Opts) ->
+   [pipe:spawn(X) || X <- Opts, erlang:is_function(X)];
+make(Mod, Opts) ->
+   Mod:spawn(Opts).
 

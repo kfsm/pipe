@@ -16,7 +16,7 @@
 %%   limitations under the License.
 %%
 %% @description
-%%   acceptor factory - creates "application" protocol stack   
+%%     
 -module(pipe_spawner_sup).
 -behaviour(supervisor).
 

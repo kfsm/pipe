@@ -219,7 +219,8 @@ make(Pipeline) ->
       end, 
       Head,
       Tail
-   ).
+   ),
+   hd(Pipeline).
 
 %%
 %% ioctl interface (sync and async)
@@ -502,10 +503,10 @@ tx({pipe, _, _}) ->
 -spec(spawner/3 :: (atom(), atom(), list()) -> {ok, pid()} | {error, any()}).
 
 spawner(Name, Mod, Opts) ->
-   supervisor:start_child(pipe_spawner_sup, [Name, Mod, Opts]).
+   supervisor:start_child(pipe_spawner_sup, [Name, Mod, [{owner, self()}|Opts]]).
 
 spawner(Mod, Opts) ->
-   supervisor:start_child(pipe_spawner_sup, [Mod, Opts]).
+   supervisor:start_child(pipe_spawner_sup, [Mod, [{owner, self()}|Opts]]).
 
 %%
 %% spawn pipeline instance 
