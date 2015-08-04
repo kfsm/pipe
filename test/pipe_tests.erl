@@ -61,7 +61,8 @@ spawner() ->
    {ok, Pid} = pipe:spawner(default, [
       fun(X) -> {b, [1|X]} end,
       fun(X) -> {b, [2|X]} end,
-      fun(X) -> {b, [3|X]} end
+      fun(X) -> {b, [3|X]} end,
+      fun(X) -> {a,     X} end
    ]),
    Pid.
 
@@ -136,8 +137,8 @@ spawn(Pid) ->
    ?_assertMatch(
       [
          _,
-         {ioctl, a, _},
-         [3,2,1]
+         {ioctl, b, _},
+         [1,2,3,3,2,1]
       ], 
       [
          pipe:send(
