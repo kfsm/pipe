@@ -294,6 +294,7 @@ demonitor({node, _, Node}) ->
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
 call(Pid, Msg, Timeout) ->
+   %% @todo: inline make ref for performance
    Ref = {_, Tx, _} = pipe:monitor(process, Pid),
    catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
    receive

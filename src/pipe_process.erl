@@ -17,6 +17,12 @@
 %%
 %% @description
 %%    pipe process container
+%%
+%% @todo
+%%    use proc_lib:spawn_link or proc_lib:start_link to start the process
+%%    then perform your initialization (calling proc_lib:init_ack where appropriate), 
+%%    and finally calling gen_server:enter_loop. What this gives you is pretty much 
+%%    the ability to customize the initialization of your gen_server process.
 -module(pipe_process).
 -behaviour(gen_server).
 -include("pipe.hrl").

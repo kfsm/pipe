@@ -160,6 +160,9 @@ bind(Pipe, Pids, Flags) ->
 %%
 make(default, Opts) ->
    [pipe:spawn(X) || X <- Opts, erlang:is_function(X)];
-make(Mod, Opts) ->
+make({Mod, Fun}, Opts) ->
+   Mod:Fun(Opts);
+make(Mod, Opts)
+ when is_atom(Mod) ->
    Mod:spawn(Opts).
 
