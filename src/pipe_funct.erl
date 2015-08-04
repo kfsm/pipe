@@ -20,6 +20,8 @@ handle(In, Pipe, Funct) ->
       {a, Eg} ->
          pipe:a(Pipe, Eg);
       {b, Eg} ->
-         pipe:b(Pipe, Eg)
+         pipe:b(Pipe, Eg);
+      _       ->
+         ok
    end,
    {next_state, handle, Funct}. 

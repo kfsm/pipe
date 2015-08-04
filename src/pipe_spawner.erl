@@ -142,18 +142,22 @@ pool(#fsm{mod = Mod, opts = Opts0, n = N}) ->
 %% bind pipeline with owner process
 bind(Pipe, Pids, Flags) ->
    From = pipe:a(Pipe),
-   case {is(iob2b, Flags), is(nopipe, Flags)} of
-      {true, _} ->
+   case {is(iob2b, Flags), is(nopipe, Flags), is(tail, Flags)} of
+      {true, _, _} ->
          X = pipe:make(Pids),
          _ = pipe:bind(b, lists:last(Pids), From),
          _ = pipe:bind(b, From, lists:last(Pids)),
          X;
 
-      {_, true} ->
+      {_, true, _} ->
          pipe:make(Pids);
+      
+      {_, _, true} ->
+         pipe:make(Pids ++ [From]);
 
-      {_,   _} ->
-         pipe:make(Pids ++ [From])
+      _ ->
+         pipe:make([From|Pids]),
+         hd(Pids)
    end.
 
 %%
