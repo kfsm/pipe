@@ -65,13 +65,6 @@
   ,pid/1
   ,tx/1
 ]).
-%% pipeline interface
--export([
-   spawner/2
-  ,spawner/3
-  ,spawn/2
-  ,spawn/3
-]).
 
 %%
 %% data types
@@ -491,38 +484,6 @@ tx({pipe, {Tx, _Pid}, _})
 tx({pipe, _, _}) ->
    undefined.
 
-%%%----------------------------------------------------------------------------   
-%%%
-%%% private
-%%%
-%%%----------------------------------------------------------------------------   
-
-
-%%
-%% defines new pipeline
--spec(spawner/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
--spec(spawner/3 :: (atom(), atom(), list()) -> {ok, pid()} | {error, any()}).
-
-spawner(Name, Mod, Opts) ->
-   supervisor:start_child(pipe_spawner_sup, [Name, Mod, [{owner, self()}|Opts]]).
-
-spawner(Mod, Opts) ->
-   supervisor:start_child(pipe_spawner_sup, [Mod, [{owner, self()}|Opts]]).
-
-%%
-%% spawn pipeline instance 
-%%  Flags
-%%    nopipe - do not bind owner process to new pipeline
-%%    tail   - bind owner process to tail
-%%    iob2b  - bind owner process to tail using b-to-b connection
--spec(spawn/2 :: (pid(), list()) -> {ok, pid()} | {error, any()}).
--spec(spawn/3 :: (pid(), list(), list()) -> {ok, pid()} | {error, any()}).
-
-spawn(Pid, Opts) ->
-   pipe:spawn(Pid, Opts, []).
-
-spawn(Pid, Opts, Flags) ->
-   pipe:call(Pid, {spawn, Opts, Flags}).
 
 %%%----------------------------------------------------------------------------   
 %%%

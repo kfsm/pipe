@@ -39,16 +39,6 @@ pipe_test_() ->
       ]
    }.
 
-spawner_test_() ->
-   {
-      foreach,
-      fun spawner/0,
-      fun free/1,
-      [
-         fun spawn/1
-      ]
-   }.
-
 init() ->
    [
       pipe:spawn(fun(X) -> {b, [1|X]} end),
@@ -56,15 +46,6 @@ init() ->
       pipe:spawn(fun(X) -> {a, [3|X]} end)
    ].
 
-spawner() ->
-   pipe:start(),
-   {ok, Pid} = pipe:spawner(default, [
-      fun(X) -> {b, [1|X]} end,
-      fun(X) -> {b, [2|X]} end,
-      fun(X) -> {b, [3|X]} end,
-      fun(X) -> {a,     X} end
-   ]),
-   Pid.
 
 free(Pids) ->
    pipe:free(Pids),
@@ -130,23 +111,6 @@ call([_, _, Pid]) ->
       [
          pipe:call(Pid, []),
          gen_server:call(Pid, [])
-      ]
-   ).
-
-spawn(Pid) ->
-   ?_assertMatch(
-      [
-         _,
-         {ioctl, b, _},
-         [1,2,3,3,2,1]
-      ], 
-      [
-         pipe:send(
-            erlang:element(2, pipe:spawn(Pid, [])),
-            []
-         ),
-         pipe:recv(),
-         pipe:recv()
       ]
    ).
 
