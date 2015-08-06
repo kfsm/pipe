@@ -50,7 +50,6 @@
   ,send/3
   ,emit/3
   ,emit/4
-  ,ack/1
   ,ack/2
   ,recv/0 
   ,recv/1
@@ -72,6 +71,10 @@
 -type(tx()      :: {pid(), reference()} | {reference(), pid()}).
 -type(monitor() :: {reference(), pid() | node()}).
 -export_type([pipe/0]).
+
+%%
+% -compile({no_auto_import,    [monitor/2]}).
+% -compile({inline, [monitor/1, monitor/2]}).
 
 %%%------------------------------------------------------------------
 %%%
@@ -287,25 +290,36 @@ demonitor({node, _, Node}) ->
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
 call(Pid, Msg, Timeout) ->
-   %% @todo: inline make ref for performance
-   Ref = {_, Tx, _} = pipe:monitor(process, Pid),
-   catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
-   receive
-   {Tx, Reply} ->
-      pipe:demonitor(Ref),
-      Reply;
-   {'DOWN', Tx, _, _, noconnection} ->
-      pipe:demonitor(Ref),
-      exit({nodedown, erlang:node(Pid)});
-   {'DOWN', Tx, _, _, Reason} ->
-      pipe:demonitor(Ref),
-      exit(Reason);
-   {nodedown, Node} ->
-      pipe:demonitor(Ref),
-      exit({nodedown, Node})
-   after Timeout ->
-      pipe:demonitor(Ref),
-      exit(timeout)
+   try erlang:monitor(process, Pid) of
+      Tx ->
+         catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
+         receive
+         {Tx, Reply} ->
+            erlang:demonitor(Tx, [flush]),
+            Reply;
+         {'DOWN', Tx, _, _, noconnection} ->
+            exit({nodedown, erlang:node(Pid)});
+         {'DOWN', Tx, _, _, Reason} ->
+            exit(Reason)
+         after Timeout ->
+            erlang:demonitor(Tx, [flush]),
+            exit(timeout)
+         end
+   catch error:_ ->
+      Tx   = erlang:make_ref(),
+      Node = erlang:node(Pid),
+      monitor_node(Node, true),
+      catch erlang:send(Pid, {'$pipe', {self(), Tx}, Msg}, [noconnect]),
+      receive
+      {Tx, Reply} ->
+         monitor_node(Node, false),
+         Reply;
+      {nodedown, Node} ->
+         exit({nodedown, Node})
+      after Timeout ->
+         monitor_node(Node, false),
+         exit(timeout)
+      end
    end.
 
 %%
@@ -379,13 +393,7 @@ b({pipe, _, B}, Msg, Opts) ->
 
 %%
 %% acknowledge message / request
--spec(ack/1 :: (pid()) -> ok).
 -spec(ack/2 :: (pipe() | tx(), any()) -> any()).
-
-ack({pipe, A, _}) ->
-   ack(A);
-ack(_) ->
-   ok.
 
 ack({pipe, A, _}, Msg) ->
    ack(A, Msg);
@@ -397,8 +405,11 @@ ack({Tx, Pid}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
    try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end;
 ack(Pid, Msg)
- when is_pid(Pid) orelse is_atom(Pid) ->
-   try erlang:send(Pid, Msg) catch _:_ -> Msg end.
+ when is_pid(Pid) ->
+   % no acknowledgment send for transactions originated by send 
+   Msg;
+ack(_, Msg) ->
+   Msg.
 
 %%
 %% receive pipe message
