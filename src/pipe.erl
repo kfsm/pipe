@@ -30,6 +30,7 @@
   ,start_link/4
   ,spawn/1
   ,spawn_link/1
+  ,spawn_link/2
   ,bind/2
   ,bind/3
   ,make/1
@@ -149,6 +150,7 @@ start_link(Name, Mod, Args, Opts) ->
 %% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg}
 -spec(spawn/1         :: (function()) -> pid()).
 -spec(spawn_link/1    :: (function()) -> pid()).
+-spec(spawn_link/2    :: (function(), list()) -> pid()).
 
 spawn(Fun) ->
    {ok, Pid} = start(pipe_funct, [Fun], []),
@@ -156,6 +158,15 @@ spawn(Fun) ->
 
 spawn_link(Fun) ->
    {ok, Pid} = start_link(pipe_funct, [Fun], []),
+   Pid.
+
+spawn_link(Fun, Opts0) ->
+   {ok, Pid} = case lists:keytake(init, 1, Opts0) of
+      false ->
+         start_link(pipe_funct, [Fun], Opts0);
+      {value, {init, Init}, Opts1} ->
+         start_link(pipe_funct, [Init, Fun], Opts0)
+   end,
    Pid.
 
 %%
@@ -440,6 +451,9 @@ recv(Pid, Timeout, Opts) ->
    {'$pipe', Pid, Msg} ->
       pipe:demonitor(Ref),
       Msg;
+   {'$pipe',   _, {ioctl, _, Pid} = Msg} ->
+      pipe:demonitor(Ref),
+      Msg;      
    {'DOWN', Tx, _, _, noconnection} ->
       pipe:demonitor(Ref),
       recv_error(Opts, {nodedown, erlang:node(Pid)});

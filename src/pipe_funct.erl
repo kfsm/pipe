@@ -9,6 +9,10 @@
    handle/3
 ]).
 
+init([Init, Funct]) ->
+   Init(),
+   {ok, handle, Funct};
+
 init([Funct]) ->
    {ok, handle, Funct}.
 
