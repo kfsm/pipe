@@ -133,19 +133,19 @@ handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
       {noreply, S}
    end;
 
-handle_info({'$pipe', _Pid, '$free'}, S) ->
+handle_info({'$pipe', _Pid, '$free'}, State) ->
    ?DEBUG("pipe ~p: free", [self()]),
-   {stop, normal, S};
+   {stop, normal, State};
 
-handle_info({'$pipe', Tx, Msg}, #machine{}=S) ->   
+handle_info({'$pipe', Tx, Msg}, #machine{a = A, b = B}=State) ->   
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
-   run(Msg, make_pipe(Tx, S#machine.a, S#machine.b), S);
+   run(Msg, make_pipe(Tx, A, B), State);
 
-handle_info(Msg, #machine{}=S) ->
-   %% out-of-bound message
+handle_info(Msg, #machine{a = A, b = B}=State) ->
+   %% out-of-bound message, assume b is emitter, a is consumer
    ?DEBUG("pipe recv ~p: msg ~p~n", [self(), Msg]),
-   run(Msg, {pipe, S#machine.a, S#machine.b}, S).
+   run(Msg, {pipe, B, A}, State).
 
 %%
 %%
