@@ -22,10 +22,16 @@ free(_, _Funct) ->
 handle(In, Pipe, Funct) ->
    case Funct(In) of
       {a, Eg} ->
-         pipe:a(Pipe, Eg);
+         pipe:a(Pipe, Eg),
+         {next_state, handle, Funct};
+
       {b, Eg} ->
-         pipe:b(Pipe, Eg);
+         pipe:b(Pipe, Eg),
+         {next_state, handle, Funct};
+
+      {upgrade, Upgrade} ->
+         {next_state, handle, Upgrade};
+
       _       ->
-         ok
-   end,
-   {next_state, handle, Funct}. 
+         {next_state, handle, Funct}
+   end. 
