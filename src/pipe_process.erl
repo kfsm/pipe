@@ -41,6 +41,7 @@
    mod       = undefined :: atom()  %% FSM implementation
   ,sid       = undefined :: atom()  %% FSM state (transition function)
   ,state     = undefined :: any()   %% FSM internal data structure
+  ,free      = true      :: any()   %% free-side flag (do not raise exit flag)
   ,a         = undefined :: pid()   %% pipe side (a) // source
   ,b         = undefined :: pid()   %% pipe side (b) // sink
 }).
@@ -63,10 +64,14 @@ init({error,  Reason}, _) ->
 
 %%
 %%
-terminate(Reason, #machine{mod=Mod, state=State, a = A, b = B}) ->
+terminate(Reason, #machine{mod=Mod, state=State, free = true, a = A, b = B}) ->
    Mod:free(Reason, State),
    free(A),
    free(B),
+   ok;
+
+terminate(Reason, #machine{mod=Mod, state=State, free = false}) ->
+   Mod:free(Reason, State),
    ok.
 
 free(undefined) ->
@@ -109,6 +114,15 @@ handle_info({'$pipe', _Tx, {ioctl, b, Pid}}, S) ->
 
 handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
+   {noreply, S};
+
+handle_info({'$pipe', Tx, {ioctl, 'free-side', Val}}, S) ->
+   ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
+   pipe:ack(Tx, ok),
+   {noreply, S#machine{free=Val}};
+
+handle_info({'$pipe', Tx, {ioctl, 'free-side'}}, S) ->
+   pipe:ack(Tx, {ok, S#machine.free}),
    {noreply, S};
 
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
