@@ -10,4 +10,5 @@ deps/
 .eunit/
 tests/
 rebar
+.rebar/
 *.sublime-*

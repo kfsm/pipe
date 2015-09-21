@@ -42,6 +42,7 @@
   ,sid       = undefined :: atom()  %% FSM state (transition function)
   ,state     = undefined :: any()   %% FSM internal data structure
   ,free      = true      :: any()   %% free-side flag (do not raise exit flag)
+  ,trap      = false     :: any()   %% trap $free flag
   ,a         = undefined :: pid()   %% pipe side (a) // source
   ,b         = undefined :: pid()   %% pipe side (b) // sink
 }).
@@ -116,14 +117,22 @@ handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S};
 
+%% @todo: free-side is bad idea, instead we should protect process from '$free'
 handle_info({'$pipe', Tx, {ioctl, 'free-side', Val}}, S) ->
-   ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
    pipe:ack(Tx, ok),
    {noreply, S#machine{free=Val}};
 
 handle_info({'$pipe', Tx, {ioctl, 'free-side'}}, S) ->
    pipe:ack(Tx, {ok, S#machine.free}),
    {noreply, S};
+
+handle_info({'$pipe', Tx, {ioctl, trap, Val}}, State) ->
+   pipe:ack(Tx, ok),
+   {noreply, State#machine{trap=Val}};
+
+handle_info({'$pipe', Tx, {ioctl, trap}}, #machine{trap = Val}=State) ->
+   pipe:ack(Tx, {ok, Val}),
+   {noreply, State};
 
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
    % ioctl set request
@@ -147,9 +156,13 @@ handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
       {noreply, S}
    end;
 
-handle_info({'$pipe', _Pid, '$free'}, State) ->
+handle_info({'$pipe', _Pid, '$free'}, #machine{trap = false} = State) ->
    ?DEBUG("pipe ~p: free", [self()]),
    {stop, normal, State};
+
+handle_info({'$pipe', _Pid, '$free'}, #machine{trap = true} = State) ->
+   ?DEBUG("pipe ~p: free", [self()]),
+   {noreply, State};
 
 handle_info({'$pipe', Tx, Msg}, #machine{a = A, b = B}=State) ->   
    %% in-bound call to FSM

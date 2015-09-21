@@ -141,6 +141,6 @@ endif
 ## dependencies
 ##
 rebar:
-	@curl -O https://raw.github.com/wiki/basho/rebar/rebar ; \
+	@curl -L -O https://github.com/rebar/rebar/wiki/rebar ; \
 	chmod ugo+x rebar
 
