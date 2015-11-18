@@ -165,7 +165,7 @@ spawn_link(Fun, Opts0) ->
       false ->
          start_link(pipe_funct, [Fun], Opts0);
       {value, {init, Init}, Opts1} ->
-         start_link(pipe_funct, [Init, Fun], Opts0)
+         start_link(pipe_funct, [Init, Fun], Opts1)
    end,
    Pid.
 
@@ -254,6 +254,8 @@ ioctl_(Pid, {Req, Val})
 -spec(monitor/1 :: (pid()) -> monitor()).
 -spec(monitor/2 :: (atom(), pid()) -> monitor()).
 
+monitor(undefined) ->
+   ok;
 monitor(Pid) ->
    pipe:monitor(process, Pid).
 
