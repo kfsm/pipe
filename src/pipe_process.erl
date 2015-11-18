@@ -144,6 +144,14 @@ handle_info({'DOWN', _Ref, process, B, Reason}, #machine{a = A, b = B}=State) ->
          run({sidedown, b, Reason}, {pipe, A, undefined}, State)
    end;
 
+handle_info({'$pipe', _Pid, '$free'}, State) ->
+   case erlang:process_info(self(), trap_exit) of
+      {trap_exit, false} ->
+         {stop, normal, State};
+      {trap_exit,  true} ->
+         {noreply, State}
+   end;
+
 handle_info({'$pipe', Tx, Msg}, #machine{a = A, b = B}=State) ->   
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
