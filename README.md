@@ -1,6 +1,12 @@
-# pipe - a generic, lightweight finite state machine implementation in Erlang
+# pipe 
 
-The library provides simple behavior for finite state machine (FSM) implementation. This behavior is proposed as an alternative to built gen_fsm and gen_servers. The major objective is to eliminate difference between synchronous, asynchronous and out-of-bound messages processing. The library also implements primitives to chain these state machines for complex data processing pipelines.
+A generic, lightweight finite state machine implementation in Erlang
+
+
+## Inspiration
+
+The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's Actor model outperforms a similar concepts from multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation. Additionally, it simplifies a semantic of synchronous, asynchronous and out-of-bound messages processing. The library also implements primitives to chain these state machines for complex data processing pipelines.
+
 
 ## State machine
 
