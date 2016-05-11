@@ -66,16 +66,31 @@
   ,tx/1
 ]).
 
-%%
-%% data types
--type(pipe()    :: {pipe, pid() | tx(), pid()}).
--type(tx()      :: {pid(), reference()} | {reference(), pid()}).
--type(monitor() :: {reference(), pid() | node()}).
--export_type([pipe/0]).
+%%%------------------------------------------------------------------
+%%%
+%%% data types
+%%%
+%%%------------------------------------------------------------------   
+-export_type([pipe/0, f/0]).
 
 %%
-% -compile({no_auto_import,    [monitor/2]}).
-% -compile({inline, [monitor/1, monitor/2]}).
+%% The pipe descriptor is opaque structure maintained by pipe process.
+%% The description is used by state machine behavior to emit messages.
+-type pipe()  :: {pipe, a(), b()}.
+-type a()     :: pid() | tx().
+-type b()     :: pid().
+-type tx()    :: {pid(), reference()} | {reference(), pid()}.
+
+%%
+%% Pipe lambda expression is spawned within pipe process.
+%% It builds a new message by applying a function to all received message.
+%% The process emits the new message either to side (a) or (b). 
+-type f() :: fun((_) -> {a, _} | {b, _} | _).
+
+%%
+%% the process monitor structure 
+-type monitor() :: {reference(), pid() | node()}.
+
 
 %%%------------------------------------------------------------------
 %%%
@@ -90,27 +105,27 @@ behaviour_info(callbacks) ->
       %%
       %% init pipe stage
       %%
-      %% -spec(init/1 :: ([any()]) -> {ok, sid(), state()} | {stop, any()}).
+      %% -spec(init/1 :: ([_]) -> {ok, sid(), state()} | {stop, any()}).
       {init,  1}
    
       %%
       %% free pipe stage
       %%
-      %% -spec(free/2 :: (any(), state()) -> ok).
+      %% -spec(free/2 :: (_, state()) -> ok).
      ,{free,  2}
 
       %%
-      %% optional state i/o control interface
+      %% state machine i/o control interface (optional)
       %%
-      %% -spec(ioctl/2 :: (atom() | {atom(), any()}, state()) -> any() | state()).       
+      %% -spec(ioctl/2 :: (atom() | {atom(), _}, state()) -> _ | state()).       
       %%,{ioctl, 2}
 
       %%
       %% state message handler
       %%
-      %% -spec(handler/3 :: (any(), pipe(), state()) -> {next_state, sid(), state()} 
-      %%                                             |  {stop, any(), state()} 
-      %%                                             |  {upgrade, atom(), [any()]}). 
+      %% -spec(handler/3 :: (_, pipe(), state()) -> {next_state, sid(), state()} 
+      %%                                            |  {stop, _, state()} 
+      %%                                            |  {upgrade, atom(), [_]}). 
    ];
 behaviour_info(_Other) ->
    undefined.
@@ -148,9 +163,9 @@ start_link(Name, Mod, Args, Opts) ->
 %%
 %% spawn pipe functor stage
 %% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg}
--spec(spawn/1         :: (function()) -> pid()).
--spec(spawn_link/1    :: (function()) -> pid()).
--spec(spawn_link/2    :: (function(), list()) -> pid()).
+-spec(spawn/1         :: (f()) -> pid()).
+-spec(spawn_link/1    :: (f()) -> pid()).
+-spec(spawn_link/2    :: (f(), list()) -> pid()).
 
 spawn(Fun) ->
    {ok, Pid} = start(pipe_funct, [Fun], []),
