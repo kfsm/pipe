@@ -144,8 +144,9 @@ start() ->
 %%%------------------------------------------------------------------   
 
 %%
-%% start pipe stage / pipe state machine
--spec(start/3 :: (atom(), list(), list()) -> {ok, pid()} | {error, any()}).
+%% start pipe state machine, the function takes behavior module,
+%% list of arguments to pipe init functions and list of container options.
+-spec(start/3 :: (atom(), [_], [_]) -> {ok, pid()} | {error, any()}).
 -spec(start/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/3 :: (atom(), list(), list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
@@ -161,7 +162,7 @@ start_link(Name, Mod, Args, Opts) ->
    gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
 
 %%
-%% spawn pipe functor stage
+%% spawn pipe lambda expression
 %% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg}
 -spec(spawn/1         :: (f()) -> pid()).
 -spec(spawn_link/1    :: (f()) -> pid()).
@@ -172,20 +173,20 @@ spawn(Fun) ->
    Pid.
 
 spawn_link(Fun) ->
-   {ok, Pid} = start_link(pipe_funct, [Fun], []),
-   Pid.
+   pipe:spawn_link(Fun, []).
 
 spawn_link(Fun, Opts0) ->
    {ok, Pid} = case lists:keytake(init, 1, Opts0) of
       false ->
          start_link(pipe_funct, [Fun], Opts0);
       {value, {init, Init}, Opts1} ->
+         % @todo: check usability of init option
          start_link(pipe_funct, [Init, Fun], Opts1)
    end,
    Pid.
 
 %%
-%% terminate pipeline
+%% terminate pipe or pipeline
 -spec(free/1 :: (pid() | [pid()]) -> ok).
 
 free(Pid)
@@ -198,7 +199,7 @@ free(Pipeline)
 
 
 %%
-%% bind stage to pipeline
+%% bind stage(s) together defining processing pipeline
 -spec(bind/2 :: (a | b, pid()) -> {ok, pid()}).
 -spec(bind/3 :: (a | b, pid(), pid()) -> {ok, pid()}).
 
@@ -263,9 +264,10 @@ ioctl_(Pid, {Req, Val})
 
 
 %%
-%% monitor process or node. The process receives messages:
-%%   {'DOWN', monitor(), process, pid(), reason()}
-%%   {nodedown, monitor()}
+%% The helper function to monitor either Erlang process or Erlang node. 
+%% The caller process receives one of following messages:
+%%   {'DOWN', reference(), process, pid(), reason()}
+%%   {nodedown, node()}
 -spec(monitor/1 :: (pid()) -> monitor()).
 -spec(monitor/2 :: (atom(), pid()) -> monitor()).
 
@@ -284,7 +286,7 @@ monitor(process, Pid) ->
    end;
 
 monitor(node, Node) ->
-   monitor_node(Node, true),
+   erlang:monitor_node(Node, true),
    {node, erlang:make_ref(), Node}.
  
 %%
@@ -295,7 +297,7 @@ demonitor({process, Ref, _Pid}) ->
    erlang:demonitor(Ref, [flush]);
 
 demonitor({node, _, Node}) ->
-   monitor_node(Node, false),
+   erlang:monitor_node(Node, false),
    receive
       {nodedown, Node} -> 
          ok
@@ -311,9 +313,10 @@ demonitor({node, _, Node}) ->
 
 
 %%
-%% make synchronous request to process
--spec(call/2 :: (pid(), any()) -> any()).
--spec(call/3 :: (pid(), any(), timeout()) -> any()).
+%% make synchronous request to pipe.
+%% the caller process is blocked until response is received.
+-spec(call/2 :: (pid(), _) -> _).
+-spec(call/3 :: (pid(), _, timeout()) -> _).
 
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
@@ -355,8 +358,8 @@ call(Pid, Msg, Timeout) ->
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(cast/2 :: (pid(), any()) -> reference()).
--spec(cast/3 :: (pid(), any(), list()) -> reference()).
+-spec(cast/2 :: (pid(), _) -> reference()).
+-spec(cast/3 :: (pid(), _, [atom()]) -> reference()).
 
 cast(Pid, Msg) ->
    cast(Pid, Msg, []).
@@ -371,8 +374,8 @@ cast(Pid, Msg, Opts) ->
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(send/2 :: (pid(), any()) -> any()).
--spec(send/3 :: (pid(), any(), list()) -> any()).
+-spec(send/2 :: (pid(), _) -> _).
+-spec(send/3 :: (pid(), _, [atom()]) -> _).
 
 send(Pid, Msg) ->
    send(Pid, Msg, []).
@@ -380,9 +383,10 @@ send(Pid, Msg, Opts) ->
    pipe_send(Pid, self(), Msg, Opts).
 
 %%
-%% send asynchronous request to process using existed pipe instance
--spec(emit/3 :: (pipe(), pid(), any()) -> any()).
--spec(emit/4 :: (pipe(), pid(), any(), list()) -> any()).
+%% forward asynchronous request to destination pipe.
+%% the side (a) is preserved and forwarded to destination pipe  
+-spec(emit/3 :: (pipe(), pid(), _) -> _).
+-spec(emit/4 :: (pipe(), pid(), _, [atom()]) -> _).
 
 emit(Pipe, Pid, Msg) ->
    emit(Pipe, Pid, Msg, []).
@@ -391,20 +395,21 @@ emit({pipe, A, _}, Pid, Msg, Opts) ->
    pipe_send(Pid, A, Msg, Opts).
 
 %%
-%% send message through pipe
+%% send message through pipe either to side (a) or (b)
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(a/2 :: (pipe(), any()) -> ok).
--spec(a/3 :: (pipe(), any(), list()) -> ok).
--spec(b/2 :: (pipe(), any()) -> ok).
--spec(b/3 :: (pipe(), any(), list()) -> ok).
+-spec(a/2 :: (pipe(), _) -> ok).
+-spec(a/3 :: (pipe(), _, [atom()]) -> ok).
+-spec(b/2 :: (pipe(), _) -> ok).
+-spec(b/3 :: (pipe(), _, [atom()]) -> ok).
 
 a({pipe, Pid, _}, Msg)
  when is_pid(Pid) orelse is_atom(Pid) ->
    pipe:send(Pid, Msg);
 a({pipe, {Pid, Tx}, _}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
+   % backward compatible with gen_server:reply
    try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end;
 a({pipe, {Tx, Pid}, _}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
@@ -420,7 +425,7 @@ b({pipe, _, B}, Msg, Opts) ->
    pipe:send(B, Msg, Opts).
 
 %%
-%% acknowledge message / request
+%% acknowledge message received at pipe side (a)
 -spec(ack/2 :: (pipe() | tx(), any()) -> any()).
 
 ack({pipe, A, _}, Msg) ->
@@ -440,13 +445,13 @@ ack(_, Msg) ->
    Msg.
 
 %%
-%% receive pipe message
+%% receive message from pipe (match-only pipe protocol)
 %%  Options
 %%    noexit - opts returns {error, timeout} instead of exit signal
--spec(recv/0 :: () -> any()).
--spec(recv/1 :: (timeout()) -> any()).
--spec(recv/2 :: (timeout(), list()) -> any()).
--spec(recv/3 :: (pid(), timeout(), list()) -> any()).
+-spec(recv/0 :: () -> _).
+-spec(recv/1 :: (timeout()) -> _).
+-spec(recv/2 :: (timeout(), [atom()]) -> _).
+-spec(recv/3 :: (pid(), timeout(), [atom()]) -> _).
 
 recv() ->
    recv(5000).
@@ -559,5 +564,8 @@ pipe_send_msg(Pid, Msg, true) ->
 %% yield current process
 pipe_yield(false) -> ok;
 pipe_yield(true)  -> erlang:yield().
+
+
+
 
 
