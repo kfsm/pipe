@@ -123,9 +123,9 @@ behaviour_info(callbacks) ->
       %%
       %% state message handler
       %%
-      %% -spec(handler/3 :: (_, pipe(), state()) -> {next_state, sid(), state()} 
-      %%                                            |  {stop, _, state()} 
-      %%                                            |  {upgrade, atom(), [_]}). 
+      %% -spec(handle/3 :: (_, pipe(), state()) -> {next_state, sid(), state()} 
+      %%                                           |  {stop, _, state()} 
+      %%                                           |  {upgrade, atom(), [_]}). 
    ];
 behaviour_info(_Other) ->
    undefined.

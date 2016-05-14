@@ -9,6 +9,8 @@ ebin/
 deps/
 .eunit/
 tests/
-rebar
+rebar3
+rebar.lock
 .rebar/
+_build/
 *.sublime-*
