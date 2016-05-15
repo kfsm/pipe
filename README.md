@@ -2,6 +2,7 @@
 
 A generic, lightweight finite state machine implementation in Erlang
 
+[![Build Status](https://secure.travis-ci.org/kfsm/pipe.svg?branch=master)](http://travis-ci.org/kfsm/pipe)
 
 ## Inspiration
 
