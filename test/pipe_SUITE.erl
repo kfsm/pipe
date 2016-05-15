@@ -32,7 +32,14 @@
 ]).
 
 -export([
-   start/1
+   start/1,
+   start_link/1,
+   spawn/1,
+   spawn_link/1,
+   call/1,
+   cast/1,
+   send/1,
+   ioctl/1
 ]).
 
 %%% pipe behavior 
@@ -51,7 +58,8 @@ all() ->
 groups() ->
    [
       {interface, [parallel], 
-         [start]}
+         [start, start_link, spawn, spawn_link,
+          call, cast, send, ioctl]}
    ].
 
 %%%----------------------------------------------------------------------------   
@@ -79,14 +87,92 @@ end_per_group(_, _Config) ->
 %%%
 %%%----------------------------------------------------------------------------   
 
+%%
 start(_Config) ->
    {ok, Pid} = pipe:start(?MODULE, [1], []),
    true = erlang:is_process_alive(Pid),
    ok = pipe:free(Pid),
-   timer:sleep(100),
-   false = erlang:is_process_alive(Pid),
+   ok = wait4free(Pid),
    ok.
 
+%%
+start_link(_Config) ->
+   {ok, Pid} = pipe:start_link(?MODULE, [1], []),
+   true = erlang:is_process_alive(Pid),
+   ok = pipe:free(Pid),
+   ok = wait4free(Pid),
+   ok.
+
+%%
+spawn(_Config) ->
+   Pid = pipe:spawn(fun(X) -> {b, X} end),
+   true = erlang:is_process_alive(Pid),
+   ok = pipe:free(Pid),
+   ok = wait4free(Pid),
+   ok.
+   
+%%
+spawn_link(_Config) ->
+   Pid = pipe:spawn_link(fun(X) -> {b, X} end),
+   true = erlang:is_process_alive(Pid),
+   ok = pipe:free(Pid),
+   ok = wait4free(Pid),
+   ok.
+
+%%
+call(_Config) ->
+   {ok, Pid} = pipe:start(?MODULE, [1], []),
+   {ok, 1} = pipe:call(Pid, request, 100),
+   ok = pipe:free(Pid).
+
+%%
+cast(_Config) ->
+   {ok, Pid} = pipe:start(?MODULE, [1], []),
+   Tx = pipe:cast(Pid, request),
+   receive
+      {Tx, {ok, 1}} -> 
+         ok
+      after 100 ->
+         exit(timeout)
+   end,
+   ok = pipe:free(Pid).
+
+%%
+send(_Config) ->
+   {ok, Pid} = pipe:start(?MODULE, [1], []),
+   _ = pipe:send(Pid, request),
+   receive
+      {Tx, {ok, 1}} ->
+         exit(invalid)
+      after 100 ->
+         ok
+   end,
+   ok = pipe:free(Pid).
+
+%%
+ioctl(_Config) ->
+   {ok, Pid} = pipe:start(?MODULE, [1], []),
+   1 = pipe:ioctl(Pid, x),
+   ok = pipe:ioctl(Pid, {y, "text"}),
+   "text" = pipe:ioctl(Pid, y),
+   ok = pipe:free(Pid).
+
+
+%%%----------------------------------------------------------------------------   
+%%%
+%%% utility
+%%%
+%%%----------------------------------------------------------------------------   
+
+wait4free(Pid) ->
+   case erlang:is_process_alive(Pid) of
+      true ->
+         timer:sleep(10),
+         wait4free(Pid);
+
+      false ->
+         ok
+   end.
 
 
 %%%----------------------------------------------------------------------------   
@@ -106,6 +192,10 @@ ioctl({Key, Val}, State) ->
 
 ioctl(Key, State) ->
    maps:get(Key, State).
+
+handle(request, Pipe, #{x := X} = State) ->
+   pipe:ack(Pipe, {ok, X}),
+   {next_state, handle, State};
 
 handle(_, _, State) ->
    {next_state, handle, State}.

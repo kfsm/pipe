@@ -252,10 +252,10 @@ make(Pipeline) ->
 
 ioctl(Pid, {Req, Val})
  when is_atom(Req) ->
-   call(Pid, {ioctl, Req, Val});
+   call(Pid, {ioctl, Req, Val}, infinity);
 ioctl(Pid, Req)
  when is_atom(Req) ->
-   call(Pid, {ioctl, Req}).
+   call(Pid, {ioctl, Req}, infinity).
 
 ioctl_(Pid, {Req, Val})
  when is_atom(Req) ->
