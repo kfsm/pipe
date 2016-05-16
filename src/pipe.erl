@@ -103,13 +103,21 @@
 behaviour_info(callbacks) ->
    [
       %%
-      %% init pipe stage
+      %% init pipe
+      %%
+      %% The function is called whenever the state machine process is started using either 
+      %% start_link or start function. It build internal state data structure, defines 
+      %% initial state transition, etc. The function should return either `{ok, Sid, State}` 
+      %% or `{error, Reason}`.
       %%
       %% -spec(init/1 :: ([_]) -> {ok, sid(), state()} | {stop, any()}).
       {init,  1}
    
       %%
       %% free pipe stage
+      %%
+      %% The function is called to release resource owned by state machine, it is called when 
+      %% the process is about to terminate.
       %%
       %% -spec(free/2 :: (_, state()) -> ok).
      ,{free,  2}
@@ -122,6 +130,10 @@ behaviour_info(callbacks) ->
 
       %%
       %% state message handler
+      %%
+      %% The state transition function receive any message, which is sent using pipe interface 
+      %% or any other Erlang message passing operation. The function executes the state 
+      %% transition, generates output or terminate execution. 
       %%
       %% -spec(handle/3 :: (_, pipe(), state()) -> {next_state, sid(), state()} 
       %%                                           |  {stop, _, state()} 
