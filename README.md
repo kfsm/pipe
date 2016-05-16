@@ -36,7 +36,8 @@ make run
 ## Supported features
 
 ### pipe behavior
-tbd
+
+The library provides [pipe behavior](doc/behavior.md) for state machine implementation. The standard set of predefined callback functions are used to enhance generic state machine behavior (similar to other gen_xxx modules).
 
 
 ### message passing interface
@@ -52,7 +53,7 @@ A pipeline organizes complex processing tasks through several simple Erlang proc
 
 ### More Information
 
-* study (pipe behavior interface)[doc/behavior.md] and [example](examples/pincode) of state machine implementation. 
+* study [pipe behavior interface](doc/behavior.md) and [example](examples/pincode) of state machine implementation. 
 
 
 
