@@ -327,8 +327,8 @@ demonitor({node, _, Node}) ->
 %%
 %% make synchronous request to pipe.
 %% the caller process is blocked until response is received.
--spec(call/2 :: (pid(), _) -> _).
--spec(call/3 :: (pid(), _, timeout()) -> _).
+-spec call(pid(), _) -> _.
+-spec call(pid(), _, timeout()) -> _.
 
 call(Pid, Msg) ->
    call(Pid, Msg, ?CONFIG_TIMEOUT).
@@ -370,8 +370,8 @@ call(Pid, Msg, Timeout) ->
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(cast/2 :: (pid(), _) -> reference()).
--spec(cast/3 :: (pid(), _, [atom()]) -> reference()).
+-spec cast(pid(), _) -> reference().
+-spec cast(pid(), _, [atom()]) -> reference().
 
 cast(Pid, Msg) ->
    cast(Pid, Msg, []).
@@ -386,8 +386,8 @@ cast(Pid, Msg, Opts) ->
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(send/2 :: (pid(), _) -> _).
--spec(send/3 :: (pid(), _, [atom()]) -> _).
+-spec send(pid(), _) -> _.
+-spec send(pid(), _, [atom()]) -> _.
 
 send(Pid, Msg) ->
    send(Pid, Msg, []).
@@ -411,10 +411,10 @@ emit({pipe, A, _}, Pid, Msg, Opts) ->
 %%   Options:
 %%      yield     - suspend current processes
 %%      noconnect - do not connect to remote node
--spec(a/2 :: (pipe(), _) -> ok).
--spec(a/3 :: (pipe(), _, [atom()]) -> ok).
--spec(b/2 :: (pipe(), _) -> ok).
--spec(b/3 :: (pipe(), _, [atom()]) -> ok).
+-spec a(pipe(), _) -> ok.
+-spec a(pipe(), _, [atom()]) -> ok.
+-spec b(pipe(), _) -> ok.
+-spec b(pipe(), _, [atom()]) -> ok.
 
 a({pipe, Pid, _}, Msg)
  when is_pid(Pid) orelse is_atom(Pid) ->
@@ -438,7 +438,7 @@ b({pipe, _, B}, Msg, Opts) ->
 
 %%
 %% acknowledge message received at pipe side (a)
--spec(ack/2 :: (pipe() | tx(), any()) -> any()).
+-spec ack(pipe() | tx(), any()) -> any().
 
 ack({pipe, A, _}, Msg) ->
    ack(A, Msg);

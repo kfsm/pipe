@@ -41,7 +41,8 @@ The library provides [pipe behavior](doc/behavior.md) for state machine implemen
 
 
 ### message passing interface
-tbd
+
+The library implements alternative inter process communication protocol. The major objective is to eliminate difference between synchronous, asynchronous and out-of-bound messages processing. It is expected that usage pattern and protocol defines necessary acknowledgment patterns but the implementation is uniform.
 
 
 ### pipeline
@@ -54,6 +55,7 @@ A pipeline organizes complex processing tasks through several simple Erlang proc
 ### More Information
 
 * study [pipe behavior interface](doc/behavior.md) and [example](examples/pincode) of state machine implementation. 
+* understand [message passing interface](doc/message.md) and ping-pong server [example](examples/pingpong)
 
 
 
@@ -89,102 +91,4 @@ If you detect a bug, please bring it to our attention via GitHub issues. Please 
 - specify the configuration of your environment, including which operating system you're using and the versions of your runtime environments
 - attach logs, screen shots and/or exceptions if possible
 - briefly summarize the steps you took to resolve or reproduce the problem
-
-
-
-
-
-
-
-## State machine
-
-
-
-
-
-
-
-
-## Message passing
-
-The library implements alternative inter process communication protocol. The major objective is to eliminate difference between synchronous, asynchronous and out-of-bound messages handling. It makes an assumption that Erlang processes interact each other by sending _synchronous_, _asynchronous_ 
-_out-of-bound_ messages or they are organized to _pipelines_.
-
-### synchronous
-
-The execution of message originator is blocked until recipient outputs 
-successful or unsuccessful result message. The originator process waits for 
-response or it is terminated by timeout. The synchronous is a typical scenario 
-for client - server interactions. The state transition function has to acknowledge
-the message to return the result to client.
-
-```
-pipe:call(...)  <----->  pipe:ack(...) 
-```
-
-### asynchronous 
-
-The execution of message originator is not blocked. However, it implies that 
-originator process waits for successful or unsuccessful response. The output of 
-recipient is delivered to mailbox of originator process. Each asynchronous request
-is tagged by unique reference thus client can monitor the server response. The 
-asynchronous communication allows to execute multiple parallel service calls 
-towards multiple recipients  (e.g. asynchronous external I/O, _long-lasting_ 
-requests).
-
-```
-pipe:cast(...) <-----> pipe:ack(...)
-```
-
-### out-of-bound
-
-the execution of message originator is not blocked, unlike an asynchronous
-message, the originator processes do not have intent to to track results of
-service execution (fire-and-forget mode). The message acknowledgment is optional
-but it is recommended. The library automatically send response to originator process
-if it is required by protocol. 
-
-```
-pipe:send(...) ------> [pipe:ack(...)]
-```
-
-### example
-
-```
--module(server).
--behaviour(pipe).
-
--export([
-   start_link/0,
-   init/1,
-   free/2,
-   handle/3]
-).
--export([
-   ping/1
-]).
-
-start_link() ->
-   pipe:start_link({local, ?MODULE}, ?MODULE, []).
-
-init([]) ->
-   {ok, handle, #{}}.
-
-free(_Reason, _State) -> 
-   ok.
-
-ping(Pid) -> 
-   pipe:call(Pid, ping).
-
-ping_(Pid) ->
-   pipe:cast(Pid, ping).
-
-handle(ping, Pipe, State) ->
-   pipe:ack(Pipe, pong),
-   {next_state, handle, State}.
-```
-
-## Pipeline
-
-
 
