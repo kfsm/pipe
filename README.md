@@ -6,7 +6,7 @@ A generic, lightweight finite state machine implementation in Erlang
 
 ## Inspiration
 
-The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's Actor model outperforms a similar concepts from multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation. Additionally, it simplifies a semantic of synchronous, asynchronous and out-of-bound messages processing. The library also implements primitives to chain these state machines for complex data processing pipelines.
+The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's Actor model outperforms a similar concepts and implementation from multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation. Additionally, it simplifies a semantic of synchronous, asynchronous and out-of-bound messages processing. The library also implements primitives to chain these state machines for complex data processing pipelines.
 
 
 ## Getting started
@@ -42,7 +42,7 @@ The library provides [pipe behavior](doc/behavior.md) for state machine implemen
 
 ### message passing interface
 
-The library implements alternative inter process communication protocol. The major objective is to eliminate difference between synchronous, asynchronous and out-of-bound messages processing. It is expected that usage pattern and protocol defines necessary acknowledgment patterns but the implementation is uniform.
+The library implements alternative [inter process communication protocol](doc/message.md). The major objective is to eliminate difference between synchronous, asynchronous and out-of-bound messages processing. It is expected that usage pattern and protocol defines necessary acknowledgment patterns but the implementation is uniform.
 
 
 ### pipeline
