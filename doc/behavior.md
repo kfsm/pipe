@@ -21,8 +21,8 @@ pipe:send       --------> Module:StateName/3
 
 ### init/1 
 
-```
-init/1 :: (list()) -> {ok, atom(), state()} | {error, any()}
+```erlang
+-spec init(list()) -> {ok, atom(), state()} | {error, any()}.
 ```
 
 The function is called whenever the state machine process is started using either start_link or start function. It build internal state data structure, defines initial state transition, etc. The function should return either `{ok, Sid, State}` or `{error, Reason}`. 
@@ -30,8 +30,8 @@ The function is called whenever the state machine process is started using eithe
 
 ### free/2 
 
-```
-free/2 :: (any(), state()) -> ok
+```erlang
+-spec free(any(), state()) -> ok.
 ```
 
 The function is called to release resource owned by state machine, it is called when the process is about to terminate.
@@ -39,8 +39,8 @@ The function is called to release resource owned by state machine, it is called 
 
 ### ioctl/2
 
-```
-ioctl/2 :: (atom() | {atom(), any()}, state()) -> any() | state()
+```erlang
+-spec ioctl(atom() | {atom(), any()}, state()) -> any() | state().
 ```
 
 The function is optional, generic I/O control interface to read/write state machine attributes. 
@@ -48,10 +48,10 @@ The function is optional, generic I/O control interface to read/write state mach
 
 ### StateName/3 
 
-```
-StateName/3 :: (any(), pipe(), state()) -> {next_state, sid(), state()} 
-                                        |  {stop, any(), state()} 
-                                        |  {upgrade, atom(), [any()]}
+```erlang
+-spec StateName(any(), pipe(), state()) -> {next_state, sid(), state()} 
+                                           |  {stop, any(), state()} 
+                                           |  {upgrade, atom(), [any()]}.
 ```
  
 The state transition function receive any message, which is sent using pipe interface or any other Erlang message passing operation. The function executes the state transition, generates output or terminate execution. 

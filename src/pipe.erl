@@ -31,6 +31,9 @@
   ,spawn/1
   ,spawn_link/1
   ,spawn_link/2
+  ,fspawn/1
+  ,fspawn_link/1
+  ,fspawn_link/2
   ,bind/2
   ,bind/3
   ,make/1
@@ -191,6 +194,15 @@ spawn_link(Fun, Opts) ->
    {ok, Pid} = start_link(pipe_lambda, [Fun], Opts),
    Pid.
 
+fspawn(Fun) ->
+   pipe:spawn(fun(X) -> {b, Fun(X)} end).
+
+fspawn_link(Fun) ->
+   pipe:spawn_link(fun(X) -> {b, Fun(X)} end).
+
+fspawn_link(Fun, Opts) ->
+   pipe:spawn_link(fun(X) -> {b, Fun(X)} end, Opts).
+
 %%
 %% terminate pipe or pipeline
 -spec(free/1 :: (pid() | [pid()]) -> ok).
@@ -206,8 +218,8 @@ free(Pipeline)
 
 %%
 %% bind stage(s) together defining processing pipeline
--spec(bind/2 :: (a | b, pid()) -> {ok, pid()}).
--spec(bind/3 :: (a | b, pid(), pid()) -> {ok, pid()}).
+-spec bind(a | b, pid()) -> {ok, pid()}.
+-spec bind(a | b, pid(), pid()) -> {ok, pid()}.
 
 bind(a, Pids)
  when is_list(Pids) ->
@@ -236,7 +248,7 @@ bind(b, Pid, B) ->
 %%
 %% make pipeline by binding stages
 %% return pipeline head
--spec(make/1 :: ([pid()]) -> pid()).
+-spec make([pid()]) -> pid().
 
 make(Pipeline) ->
    [Head | Tail] = lists:reverse(Pipeline),

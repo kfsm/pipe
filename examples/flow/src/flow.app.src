@@ -1,0 +1,14 @@
+{application, flow,
+   [
+      {description, "process pipe library - pipeline example"},
+      {vsn,         "0.0.0"},
+      {modules,     []},
+      {registered,  []},
+      {applications,[
+         kernel, 
+         stdlib
+      ]},
+      {env, []}
+   ]
+}.  
+
