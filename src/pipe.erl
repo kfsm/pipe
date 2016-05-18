@@ -175,26 +175,20 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% spawn pipe lambda expression
-%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg}
+%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
 -spec(spawn/1         :: (f()) -> pid()).
 -spec(spawn_link/1    :: (f()) -> pid()).
 -spec(spawn_link/2    :: (f(), list()) -> pid()).
 
 spawn(Fun) ->
-   {ok, Pid} = start(pipe_funct, [Fun], []),
+   {ok, Pid} = start(pipe_lambda, [Fun], []),
    Pid.
 
 spawn_link(Fun) ->
    pipe:spawn_link(Fun, []).
 
-spawn_link(Fun, Opts0) ->
-   {ok, Pid} = case lists:keytake(init, 1, Opts0) of
-      false ->
-         start_link(pipe_funct, [Fun], Opts0);
-      {value, {init, Init}, Opts1} ->
-         % @todo: check usability of init option
-         start_link(pipe_funct, [Init, Fun], Opts1)
-   end,
+spawn_link(Fun, Opts) ->
+   {ok, Pid} = start_link(pipe_lambda, [Fun], Opts),
    Pid.
 
 %%
