@@ -47,7 +47,7 @@ The library implements alternative [inter process communication protocol](doc/me
 
 ### pipeline
 
-A pipeline organizes complex processing tasks through several simple Erlang processes, which are called _stages_. Each stage receives message from other pipeline stages, processes them in some way, and sends transformed message back to the pipeline. The stage has predecessor / source (a) and successor / sink (b). The message always flows from (a) to (b).
+A [pipeline](doc/pipeline.md) organizes complex processing tasks through several simple Erlang processes, which are called _stages_. Each stage receives message from other pipeline stages, processes them in some way, and sends transformed message back to the pipeline. The stage has predecessor / source (a) and successor / sink (b). The message always flows from (a) to (b).
 
 
 
@@ -56,6 +56,7 @@ A pipeline organizes complex processing tasks through several simple Erlang proc
 
 * study [pipe behavior interface](doc/behavior.md) and [example](examples/pincode) of state machine implementation. 
 * understand [message passing interface](doc/message.md) and ping-pong server [example](examples/pingpong)
+* investigate [pipeline feature](doc/pipeline.md) and [computation flow example](examples/flow)
 
 
 
