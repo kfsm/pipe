@@ -34,6 +34,7 @@
   ,fspawn/1
   ,fspawn_link/1
   ,fspawn_link/2
+  ,stream/1
   ,bind/2
   ,bind/3
   ,make/1
@@ -202,6 +203,10 @@ fspawn_link(Fun) ->
 
 fspawn_link(Fun, Opts) ->
    pipe:spawn_link(fun(X) -> {b, Fun(X)} end, Opts).
+
+
+stream(Stream) ->
+   pipe_stream:start_link(Stream).
 
 %%
 %% terminate pipe or pipeline
