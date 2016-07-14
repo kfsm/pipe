@@ -162,10 +162,10 @@ start() ->
 %%
 %% start pipe state machine, the function takes behavior module,
 %% list of arguments to pipe init functions and list of container options.
--spec(start/3 :: (atom(), [_], [_]) -> {ok, pid()} | {error, any()}).
--spec(start/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
--spec(start_link/3 :: (atom(), list(), list()) -> {ok, pid()} | {error, any()}).
--spec(start_link/4 :: (atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}).
+-spec start(atom(), [_], [_]) -> {ok, pid()} | {error, any()}.
+-spec start(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
+-spec start_link(atom(), list(), list()) -> {ok, pid()} | {error, any()}.
+-spec start_link(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
 
 start(Mod, Args, Opts) ->
    gen_server:start(?CONFIG_PIPE, [Mod, Args], Opts).
@@ -180,9 +180,9 @@ start_link(Name, Mod, Args, Opts) ->
 %%
 %% spawn pipe lambda expression
 %% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
--spec(spawn/1         :: (f()) -> pid()).
--spec(spawn_link/1    :: (f()) -> pid()).
--spec(spawn_link/2    :: (f(), list()) -> pid()).
+-spec spawn(f()) -> pid().
+-spec spawn_link(f()) -> pid().
+-spec spawn_link(f(), list()) -> pid().
 
 spawn(Fun) ->
    {ok, Pid} = start(pipe_lambda, [Fun], []),
@@ -210,7 +210,7 @@ stream(Stream) ->
 
 %%
 %% terminate pipe or pipeline
--spec(free/1 :: (pid() | [pid()]) -> ok).
+-spec free(pid() | [pid()]) -> ok.
 
 free(Pid)
  when is_pid(Pid) ->
@@ -270,8 +270,8 @@ make(Pipeline) ->
 
 %%
 %% ioctl interface (sync and async)
--spec(ioctl/2  :: (pid(), atom() | {atom(), any()}) -> any()).
--spec(ioctl_/2 :: (pid(), atom() | {atom(), any()}) -> any()).
+-spec ioctl(pid(), atom() | {atom(), any()}) -> any().
+-spec ioctl_(pid(), atom() | {atom(), any()}) -> any().
 
 ioctl(Pid, {Req, Val})
  when is_atom(Req) ->
@@ -291,8 +291,8 @@ ioctl_(Pid, {Req, Val})
 %% The caller process receives one of following messages:
 %%   {'DOWN', reference(), process, pid(), reason()}
 %%   {nodedown, node()}
--spec(monitor/1 :: (pid()) -> monitor()).
--spec(monitor/2 :: (atom(), pid()) -> monitor()).
+-spec monitor(pid()) -> monitor().
+-spec monitor(atom(), pid()) -> monitor().
 
 monitor(undefined) ->
    ok;
@@ -314,7 +314,7 @@ monitor(node, Node) ->
  
 %%
 %% release process monitor
--spec(demonitor/1 :: (monitor()) -> ok).
+-spec demonitor(monitor()) -> ok.
 
 demonitor({process, Ref, _Pid}) ->
    erlang:demonitor(Ref, [flush]);
@@ -408,8 +408,8 @@ send(Pid, Msg, Opts) ->
 %%
 %% forward asynchronous request to destination pipe.
 %% the side (a) is preserved and forwarded to destination pipe  
--spec(emit/3 :: (pipe(), pid(), _) -> _).
--spec(emit/4 :: (pipe(), pid(), _, [atom()]) -> _).
+-spec emit(pipe(), pid(), _) -> _.
+-spec emit(pipe(), pid(), _, [atom()]) -> _.
 
 emit(Pipe, Pid, Msg) ->
    emit(Pipe, Pid, Msg, []).
@@ -471,10 +471,10 @@ ack(_, Msg) ->
 %% receive message from pipe (match-only pipe protocol)
 %%  Options
 %%    noexit - opts returns {error, timeout} instead of exit signal
--spec(recv/0 :: () -> _).
--spec(recv/1 :: (timeout()) -> _).
--spec(recv/2 :: (timeout(), [atom()]) -> _).
--spec(recv/3 :: (pid(), timeout(), [atom()]) -> _).
+-spec recv() -> _.
+-spec recv(timeout()) -> _.
+-spec recv(timeout(), [atom()]) -> _.
+-spec recv(pid(), timeout(), [atom()]) -> _.
 
 recv() ->
    recv(5000).
@@ -520,8 +520,8 @@ recv_error(_, Reason) ->
 
 %%
 %% return pid() of pipe processes
--spec(a/1 :: (pipe()) -> pid() | undefined).
--spec(b/1 :: (pipe()) -> pid() | undefined).
+-spec a(pipe()) -> pid() | undefined.
+-spec b(pipe()) -> pid() | undefined.
 
 a({pipe, {_, A}, _})
  when is_pid(A) -> 
@@ -536,14 +536,14 @@ b({pipe, _, B}) ->
 
 %%
 %% extract transaction pid
--spec(pid/1 :: (pipe()) -> pid() | undefined).
+-spec pid(pipe()) -> pid() | undefined.
 
 pid(Pipe) ->
    pipe:a(Pipe).
 
 %%
 %% extract transaction reference
--spec(tx/1 :: (pipe()) -> reference() | undefined).
+-spec tx(pipe()) -> reference() | undefined.
 
 tx({pipe, {_Pid, Tx}, _})
  when is_reference(Tx) ->
