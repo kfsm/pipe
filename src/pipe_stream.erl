@@ -21,43 +21,50 @@
 -module(pipe_stream).
 
 -export([
-   start_link/1,
-   init/2
+   start_link/2,
+   init/3
 ]).
 
 
-start_link(Stream) ->
-   proc_lib:start_link(?MODULE, init, [self(), Stream]).
+start_link(Stream, Opts) ->
+   proc_lib:start_link(?MODULE, init, [self(), Stream, Opts]).
 
-init(Parent, Stream) ->
+init(Parent, Stream, Opts) ->
    proc_lib:init_ack(Parent, {ok, self()}),
-   setup(Stream, undefined, undefined).
+   Send = case lists:member(sync, Opts) of
+      true  -> call;
+      false -> send
+   end,
+   setup(Stream, Send, undefined, undefined).
    
 %%
 %% setup phase, stream stage is bound to side (a) and side (b)
-setup(Stream, A, B) ->
+setup(Stream, Send, A, B) ->
    receive
       %% bind side a
       {'$pipe', _, {ioctl, a, Pid}} when B =:= undefined ->
-         setup(Stream, Pid, B);
+         setup(Stream, Send, Pid, B);
 
       {'$pipe', _, {ioctl, a, Pid}} ->
-         stream(Stream, Pid, B);
+         stream(Stream, Send, Pid, B);
 
       %% bind side b
       {'$pipe', _, {ioctl, b, Pid}} when A =:= undefined ->
-         setup(Stream, A,  Pid);
+         setup(Stream, Send, A,  Pid);
 
       {'$pipe', _, {ioctl, b, Pid}} ->
-         stream(Stream, A, Pid)
+         stream(Stream, Send, A, Pid)
    end.
 
 %%
 %% execution phase, stream stage is bound
-stream(Stream, A, B) ->
+stream(Stream, Send, A, B) ->
    stream:foreach(
-      fun(X) -> pipe:send(B, X) end,
-      Stream(message(A))
+      fun(X) -> pipe:Send(B, X) end,
+      stream:filter(
+         fun(X) -> X /= undefined end,
+         Stream(message(A))
+      )
    ).
 
 %%
@@ -71,6 +78,11 @@ message(A) ->
          message(A);
 
       {'$pipe', Tx, Msg} ->
-         pipe:ack(Tx, ok),
-         stream:new(Msg, fun() -> message(A) end)
+         stream:new(Msg, 
+            fun() ->
+               %% acknowledge message one it is consumed  
+               pipe:ack(Tx, ok),
+               message(A) 
+            end
+         )
    end.

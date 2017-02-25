@@ -36,6 +36,7 @@
   ,fspawn_link/1
   ,fspawn_link/2
   ,stream/1
+  ,stream/2
   ,bind/2
   ,bind/3
   ,make/1
@@ -87,10 +88,14 @@
 -type tx()    :: {pid(), reference()} | {reference(), pid()}.
 
 %%
-%% Pipe lambda expression is spawned within pipe process.
+%% pipe lambda expression is spawned within pipe process.
 %% It builds a new message by applying a function to all received message.
 %% The process emits the new message either to side (a) or (b). 
 -type f() :: fun((_) -> {a, _} | {b, _} | _).
+
+%%
+%% see datum:stream()
+-type stream() :: {s, _, _}.
 
 %%
 %% the process monitor structure 
@@ -193,15 +198,20 @@ supervisor(Mod, Args) ->
 -spec spawn_link(f(), list()) -> pid().
 
 spawn(Fun) ->
-   {ok, Pid} = start(pipe_lambda, [Fun], []),
-   Pid.
+   either_pid( start(pipe_lambda, [Fun], []) ).
 
 spawn_link(Fun) ->
    pipe:spawn_link(Fun, []).
 
 spawn_link(Fun, Opts) ->
-   {ok, Pid} = start_link(pipe_lambda, [Fun], Opts),
-   Pid.
+   either_pid( start_link(pipe_lambda, [Fun], Opts) ).
+
+%%
+%% spawn pipe lambda expression
+%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
+-spec fspawn(f()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(f()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(f(), list()) -> {ok, pid()} | {error, _}.
 
 fspawn(Fun) ->
    pipe:spawn(fun(X) -> {b, Fun(X)} end).
@@ -212,9 +222,18 @@ fspawn_link(Fun) ->
 fspawn_link(Fun, Opts) ->
    pipe:spawn_link(fun(X) -> {b, Fun(X)} end, Opts).
 
+%%
+%% spawn stream processing within pipes  
+%% Options
+%%   sync - use synchronous i/o 
+-spec stream(stream()) -> {ok, pid()} | {error, _}.
+-spec stream(stream(), list()) -> {ok, pid()} | {error, _}.
 
 stream(Stream) ->
-   pipe_stream:start_link(Stream).
+   stream(Stream, []).
+
+stream(Stream, Opts) ->
+   pipe_stream:start_link(Stream, Opts).
 
 %%
 %% terminate pipe or pipeline
@@ -499,22 +518,22 @@ recv(Timeout, Opts) ->
    end.
 
 recv(Pid, Timeout, Opts) ->
-   Ref  = {_, Tx, _} = pipe:monitor(process, Pid),
+   Tx = erlang:monitor(process, Pid),
    receive
    {'$pipe', Pid, Msg} ->
-      pipe:demonitor(Ref),
+      erlang:demonitor(Tx, [flush]),
       Msg;
    {'$pipe',   _, {ioctl, _, Pid} = Msg} ->
-      pipe:demonitor(Ref),
+      erlang:demonitor(Tx, [flush]),
       Msg;      
    {'DOWN', Tx, _, _, noconnection} ->
-      pipe:demonitor(Ref),
+      erlang:demonitor(Tx, [flush]),
       recv_error(Opts, {nodedown, erlang:node(Pid)});
    {'DOWN', Tx, _, _, Reason} ->
-      pipe:demonitor(Ref),
+      erlang:demonitor(Tx, [flush]),
       recv_error(Opts, Reason);
    {nodedown, Node} ->
-      pipe:demonitor(Ref),
+      erlang:demonitor(Tx, [flush]),
       recv_error(Opts, {nodedown, Node})
    after Timeout ->
       recv_error(Opts, timeout)
@@ -568,6 +587,13 @@ tx({pipe, _, _}) ->
 %%% private
 %%%
 %%%----------------------------------------------------------------------------   
+
+%%
+%%
+either_pid({ok, Pid}) -> 
+   Pid;
+either_pid({error, Reason}) ->
+   exit(Reason).
 
 %%
 %% send message through pipe
