@@ -50,8 +50,8 @@ The function is optional, generic I/O control interface to read/write state mach
 
 ```erlang
 -spec StateName(any(), pipe(), state()) -> {next_state, sid(), state()} 
-                                           |  {stop, any(), state()} 
-                                           |  {upgrade, atom(), [any()]}.
+                                           | {stop, any(), state()} 
+                                           | {upgrade, atom(), [any()]}.
 ```
  
 The state transition function receive any message, which is sent using pipe interface or any other Erlang message passing operation. The function executes the state transition, generates output or terminate execution. 
@@ -79,8 +79,7 @@ pincode:start_link([1,2,3,4]).
 pincode:check().
 
 %%
-%%
-enter pin-code
+%% enter pin-code
 lists:foreach(fun pincode:digit/1, [1,2,3,4]).
 
 %%

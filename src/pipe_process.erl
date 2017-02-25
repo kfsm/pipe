@@ -174,13 +174,16 @@ code_change(_Vsn, S, _) ->
 %%%----------------------------------------------------------------------------   
 
 %%
-%% make pipe definition
+%% make pipe object for side-effect
 make_pipe(Tx, A, B)
  when Tx =:= A ->
    {pipe, A, B};
 make_pipe(Tx, A, B)
  when Tx =:= B ->
    {pipe, B, A};
+make_pipe(Tx, A, B)
+ when Tx =:= self() ->
+   {pipe, A, B};
 make_pipe(Tx, undefined, B) ->
    {pipe, Tx, B};
 make_pipe(Tx, A, _B) ->

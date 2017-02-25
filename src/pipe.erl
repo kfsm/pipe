@@ -28,6 +28,7 @@
   ,start/4
   ,start_link/3
   ,start_link/4
+  ,supervisor/2
   ,spawn/1
   ,spawn_link/1
   ,spawn_link/2
@@ -78,8 +79,8 @@
 -export_type([pipe/0, f/0]).
 
 %%
-%% The pipe descriptor is opaque structure maintained by pipe process.
-%% The description is used by state machine behavior to emit messages.
+%% The pipe is opaque data structure maintained by pipe process.
+%% It is used by state machine behavior to emit side-effect.
 -type pipe()  :: {pipe, a(), b()}.
 -type a()     :: pid() | tx().
 -type b()     :: pid().
@@ -176,6 +177,13 @@ start_link(Mod, Args, Opts) ->
    gen_server:start_link(?CONFIG_PIPE, [Mod, Args], Opts).
 start_link(Name, Mod, Args, Opts) ->
    gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
+
+%%
+%% start supervise-able pipeline
+-spec supervisor(atom(), [_]) -> {ok, pid()} | {error, any()}.
+
+supervisor(Mod, Args) ->
+   pipe_supervisor:start_link(Mod, Args).
 
 %%
 %% spawn pipe lambda expression
