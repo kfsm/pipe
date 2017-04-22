@@ -130,19 +130,10 @@ handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
 %%   
 %%   
 handle_info({'DOWN', _Ref, process, A, Reason}, #machine{a = A, b = B}=State) ->
-   case erlang:process_info(self(), trap_exit) of
-      {trap_exit, false} ->
-         {stop, normal, State};
-      {trap_exit,  true} ->
-         run({sidedown, a, Reason}, {pipe, B, undefined}, State)
-   end;
+   run({sidedown, a, Reason}, {pipe, B, undefined}, State);
+
 handle_info({'DOWN', _Ref, process, B, Reason}, #machine{a = A, b = B}=State) ->
-   case erlang:process_info(self(), trap_exit) of
-      {trap_exit, false} ->
-         {stop, normal, State};
-      {trap_exit,  true} ->
-         run({sidedown, b, Reason}, {pipe, A, undefined}, State)
-   end;
+   run({sidedown, b, Reason}, {pipe, A, undefined}, State);
 
 handle_info({'$pipe', _Pid, '$free'}, State) ->
    case erlang:process_info(self(), trap_exit) of
