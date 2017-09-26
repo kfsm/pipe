@@ -479,7 +479,9 @@ b({pipe, _, B}, Msg, Opts) ->
 %% acknowledge message received at pipe side (a)
 -spec ack(pipe() | tx(), _) -> _.
 
-ack({pipe, _, _}, Msg) ->
+ack({pipe, {_, _} = A, _}, Msg) ->
+   pipe:ack(A, Msg);
+ack({pipe, _,  _}, Msg) ->
    %% Note: the ack does nothings for pipe operation
    %%       this allows us to compose state-machine to work both 
    %%       as api and intermdiate nodes 
