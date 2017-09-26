@@ -6,7 +6,7 @@ A generic, lightweight finite state machine implementation in Erlang
 
 ## Inspiration
 
-The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's Actor model outperforms a similar concepts and implementation from multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation. Additionally, it simplifies a semantic of synchronous, asynchronous and out-of-bound messages processing. The library also implements primitives to chain these state machines for complex data processing pipelines.
+The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's actor model outperforms a similar concepts and implementation by multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation and chain them into complex data processing pipelines. Additionally, it improves a semantic of synchronous, asynchronous and out-of-bound messages processing.
 
 
 ## Getting started
@@ -33,7 +33,7 @@ make run
 ```
 
 
-## Supported features
+## Key features
 
 ### pipe behavior
 
@@ -86,10 +86,21 @@ The commit message helps us to write a good release note, speed-up review proces
 > Typically a hyphen or asterisk is used for the bullet, preceded by a single space, with blank lines in between, but conventions vary here
 >
 
-## Bugs
+### bugs
 
 If you detect a bug, please bring it to our attention via GitHub issues. Please make your report detailed and accurate so that we can identify and replicate the issues you experience:
 - specify the configuration of your environment, including which operating system you're using and the versions of your runtime environments
 - attach logs, screen shots and/or exceptions if possible
 - briefly summarize the steps you took to resolve or reproduce the problem
+
+
+## Changelog
+
+tbd
+
+## License
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0.
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
