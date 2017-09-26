@@ -166,16 +166,28 @@ code_change(_Vsn, S, _) ->
 
 %%
 %% make pipe object for side-effect
-make_pipe(Tx, A, B)
- when Tx =:= A ->
+%% Input:
+%%   Tx - identity of pipe transaction
+%%    A - reference of side A
+%%    B - reference of side B
+make_pipe(A, A, B) ->
+   % Tx =:= A -> message from side A
    {pipe, A, B};
-make_pipe(Tx, A, B)
- when Tx =:= B ->
+make_pipe(B, A, B) ->
+   % Tx =:= B -> message from side B
    {pipe, B, A};
 make_pipe(Tx, A, B)
  when Tx =:= self() ->
+   % Tx =:= self() -> message is emited by itself
    {pipe, A, B};
 make_pipe(Tx, undefined, B) ->
+   % process is not connected to side A
+   {pipe, Tx, B};
+make_pipe({A, _} = Tx, A, B) ->
+   % is_sync_call(Tx) and Tx =:= A -> message from side A
+   {pipe, Tx, B};
+make_pipe({_, A} = Tx, A, B) ->
+   % is_sync_call(Tx) and Tx =:= A -> message from side A
    {pipe, Tx, B};
 make_pipe(Tx, A, _B) ->
    {pipe, Tx, A}.
