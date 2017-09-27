@@ -135,11 +135,13 @@ handle_info({'DOWN', _Ref, process, A, Reason}, #machine{a = A, b = B}=State) ->
 handle_info({'DOWN', _Ref, process, B, Reason}, #machine{a = A, b = B}=State) ->
    run({sidedown, b, Reason}, {pipe, A, undefined}, State);
 
-handle_info({'$pipe', _Pid, '$free'}, State) ->
+handle_info({'$pipe', Tx, '$free'}, State) ->
    case erlang:process_info(self(), trap_exit) of
       {trap_exit, false} ->
+         pipe:ack(Tx, ok),
          {stop, normal, State};
       {trap_exit,  true} ->
+         pipe:ack(Tx, ok),
          {noreply, State}
    end;
 

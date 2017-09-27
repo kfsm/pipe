@@ -242,8 +242,9 @@ stream(Stream, Opts) ->
 
 free(Pid)
  when is_pid(Pid) ->
-   erlang:send(Pid, {'$pipe', self(), '$free'}),
-   ok;
+   % erlang:send(Pid, {'$pipe', self(), '$free'}),
+   % ok;
+   pipe:call(Pid, '$free');
 free(Pipeline)
  when is_list(Pipeline) ->
    lists:foreach(fun free/1, Pipeline).
