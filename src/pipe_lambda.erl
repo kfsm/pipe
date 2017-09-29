@@ -34,6 +34,9 @@ free(_, _Fun) ->
 
 handle(In, Pipe, Fun) ->
    case Fun(In) of
+      stop ->
+         {stop, normal, Fun};
+
       {a, Eg} ->
          pipe:a(Pipe, Eg),
          {next_state, handle, Fun};
