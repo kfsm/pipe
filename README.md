@@ -6,16 +6,15 @@ A generic, lightweight finite state machine implementation in Erlang
 
 ## Inspiration
 
-The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's actor model outperforms a similar concepts and implementation by multiple dimensions, developers experience similar issue. This library provides an alternative to `gen_fsm` and `gen_server` behaviors. It defines a simplified interface for finite state machine (FSM) implementation and chain them into complex data processing pipelines. Additionally, it improves a semantic of synchronous, asynchronous and out-of-bound messages processing.
+The actor model is often criticized by amount of boilerplate code to define actor; by absence of actor's composition formalism. Despite the fact that Erlang's actor model outperforms a similar concepts and implementation by multiple dimensions, developers experience similar issue. This library provides an alternative to OTP behaviors: `gen_fsm`, `gen_server` and `gen_statem`. It defines a simplified interface for finite state machine (FSM) implementation and chain them into complex data processing pipelines. Additionally, it unifies a semantic of synchronous, asynchronous and out-of-bound messages processing.
 
 
 ## Getting started
 
-The latest version of the library is available at its master branch. All development, including new features and bug fixes, take place on the master branch using forking and pull requests as described in contribution guidelines.
+The latest version of the library is available at its `master` branch. All development, including new features and bug fixes, take place on the `master` branch using forking and pull requests as described in contribution guidelines.
 
-### Installation
+If you use rebar3 you can include the library in your project with
 
-If you use `rebar` you can include `pipe` library in your project with
 ```
 {pipe, ".*",
    {git, "https://github.com/kfsm/pipe", {branch, master}}
@@ -33,7 +32,9 @@ make run
 ```
 
 
+
 ## Key features
+
 
 ### pipe behavior
 
@@ -94,9 +95,6 @@ If you detect a bug, please bring it to our attention via GitHub issues. Please 
 - briefly summarize the steps you took to resolve or reproduce the problem
 
 
-## Changelog
-
-tbd
 
 ## License
 
