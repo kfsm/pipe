@@ -9,6 +9,12 @@
          stdlib
       ]},
       {mod, {pipe_app, []}},
-      {env, []}
+      {env, []},
+
+      {licenses, ["Apache"]},
+      {maintainers, ["Dmitry Kolesnikov", "Mario Cardona"]},
+      {links, [
+         {"GitHub", "https://github.com/kfsm/pipe"}
+      ]}
    ]
 }.  
