@@ -71,21 +71,19 @@ b(Msg, [_|Pipe]) ->
 
 require(Lens, [In|_]) ->
    case lens:get(Lens, In) of
-      {ok, _} ->
-         {ok, In};
+      {ok, Expect} ->
+         {ok, Expect};
       {error, _} = Error ->
          Error
+      LensFocusedAt ->
+         {ok, LensFocusedAt}
    end.
 
 defined(Lens, [In|_]) ->
    case lens:get(Lens, In) of
       undefined ->
          {error, undefined};
-      Value ->
-         {ok, Value}
+      _ ->
+         {ok, In}
    end.
-
-
-
-
 
