@@ -74,7 +74,7 @@ require(Lens, [In|_]) ->
       {ok, Expect} ->
          {ok, Expect};
       {error, _} = Error ->
-         Error
+         Error;
       LensFocusedAt ->
          {ok, LensFocusedAt}
    end.
