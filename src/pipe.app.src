@@ -12,9 +12,10 @@
       {env, []},
 
       {licenses, ["Apache"]},
+      {pkg_name, pipes},
       {maintainers, ["Dmitry Kolesnikov", "Mario Cardona"]},
       {links, [
-         {"GitHub", "https://github.com/fogfish/pipe"}
+         {"GitHub", "https://github.com/kfsm/pipe"}
       ]}
    ]
 }.  
