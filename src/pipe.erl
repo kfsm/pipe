@@ -24,53 +24,53 @@
 -export([behaviour_info/1]).
 %% pipe management interface
 -export([
-   start/3
-  ,start/4
-  ,start_link/3
-  ,start_link/4
-  ,supervisor/2
-  ,spawn/1
-  ,spawn_link/1
-  ,spawn_link/2
-  ,fspawn/1
-  ,fspawn_link/1
-  ,fspawn_link/2
-  ,stream/1
-  ,stream/2
-  ,bind/2
-  ,bind/3
-  ,make/1
-  ,free/1
-  ,monitor/1
-  ,monitor/2
-  ,demonitor/1
-  ,ioctl/2
-  ,ioctl_/2
+   start/3,
+   start/4,
+   start_link/3,
+   start_link/4,
+   supervisor/2,
+   spawn/1,
+   spawn_link/1,
+   spawn_link/2,
+   fspawn/1,
+   fspawn_link/1,
+   fspawn_link/2,
+   stream/1,
+   stream/2,
+   bind/2,
+   bind/3,
+   make/1,
+   free/1,
+   monitor/1,
+   monitor/2,
+   demonitor/1,
+   ioctl/2,
+   ioctl_/2
 ]).
 %% pipe i/o interface
 -export([
-   call/2
-  ,call/3
-  ,cast/2
-  ,cast/3
-  ,send/2
-  ,send/3
-  ,emit/3
-  ,emit/4
-  ,ack/2
-  ,recv/0 
-  ,recv/1
-  ,recv/2
-  ,recv/3
-  ,a/1
-  ,a/2 
-  ,a/3
-  ,b/1
-  ,b/2
-  ,b/3
-  ,pid/1
-  ,tx/1
-  ,swap/1
+   call/2,
+   call/3,
+   cast/2,
+   cast/3,
+   send/2,
+   send/3,
+   emit/3,
+   emit/4,
+   ack/2,
+   recv/0, 
+   recv/1,
+   recv/2,
+   recv/3,
+   a/1,
+   a/2, 
+   a/3,
+   b/1,
+   b/2,
+   b/3,
+   pid/1,
+   tx/1,
+   swap/1
 ]).
 
 %%%------------------------------------------------------------------
@@ -122,7 +122,7 @@ behaviour_info(callbacks) ->
       %% or `{error, Reason}`.
       %%
       %% -spec(init/1 :: ([_]) -> {ok, sid(), state()} | {stop, any()}).
-      {init,  1}
+      {init,  1},
    
       %%
       %% free pipe stage
@@ -131,13 +131,13 @@ behaviour_info(callbacks) ->
       %% the process is about to terminate.
       %%
       %% -spec(free/2 :: (_, state()) -> ok).
-     ,{free,  2}
+      {free,  2}
 
       %%
       %% state machine i/o control interface (optional)
       %%
       %% -spec(ioctl/2 :: (atom() | {atom(), _}, state()) -> _ | state()).       
-      %%,{ioctl, 2}
+      %%{ioctl, 2}
 
       %%
       %% state message handler
@@ -242,8 +242,6 @@ stream(Stream, Opts) ->
 
 free(Pid)
  when is_pid(Pid) ->
-   % erlang:send(Pid, {'$pipe', self(), '$free'}),
-   % ok;
    pipe:call(Pid, '$free');
 free(Pipeline)
  when is_list(Pipeline) ->
@@ -447,14 +445,8 @@ emit({pipe, A, _}, Pid, Msg, Opts) ->
    pipe_send(Pid, A, Msg, Opts).
 
 %%
-%% send message through pipe either to side (a) or (b)
-%%   Options:
-%%      yield     - suspend current processes
-%%      noconnect - do not connect to remote node
+%% asynchronous send message through pipe to side (a)
 -spec a(pipe(), _) -> ok.
--spec a(pipe(), _, [atom()]) -> ok.
--spec b(pipe(), _) -> ok.
--spec b(pipe(), _, [atom()]) -> ok.
 
 a({pipe, Pid, _}, Msg)
  when is_pid(Pid) orelse is_atom(Pid) ->
@@ -467,14 +459,27 @@ a({pipe, {Tx, Pid}, _}, Msg)
  when is_pid(Pid), is_reference(Tx) ->
    try erlang:send(Pid, {Tx, Msg}), Msg catch _:_ -> Msg end.
 
-a({pipe, A, _}, Msg, Opts) ->
-   pipe:send(A, Msg, Opts).
+%%
+%% synchronous send message through pipe to side (a)
+-spec a(pipe(), _, timeout()) -> ok.
+
+a({pipe, Pid, _}, Msg, Timeout) ->
+   pipe:call(Pid, Msg, Timeout).
+
+%%
+%% asynchronous send message through pipe to side (b)
+-spec b(pipe(), _) -> ok.
 
 b({pipe, _, B}, Msg) ->
    pipe:send(B, Msg).
 
-b({pipe, _, B}, Msg, Opts) ->
-   pipe:send(B, Msg, Opts).
+%%
+%% synchronous send message through pipe to side (a)
+-spec b(pipe(), _, timeout()) -> ok.
+
+b({pipe, _, B}, Msg, Timeout) ->
+   pipe:call(B, Msg, Timeout).
+
 
 %%
 %% acknowledge message received at pipe side (a)
