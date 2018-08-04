@@ -204,6 +204,18 @@ run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
       {next_state, Sid, State, TorH} ->
          {noreply, S#machine{sid=Sid, state=State}, TorH};
 
+      {reply, Reply, State} ->
+         pipe:ack(Pipe, Reply),
+         {noreply, S#machine{sid=Sid0, state=State}};
+
+      {reply, Reply, Sid, State} ->
+         pipe:ack(Pipe, Reply),
+         {noreply, S#machine{sid=Sid, state=State}};
+
+      {reply, Reply, Sid, State, TorH} ->
+         pipe:ack(Pipe, Reply),
+         {noreply, S#machine{sid=Sid, state=State}, TorH};
+
       {upgrade, New, Args} ->
          case New:init(Args) of
             {ok, Sid, State}  ->
