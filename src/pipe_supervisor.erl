@@ -26,9 +26,9 @@
 ]).
 
 %%
--define(CHILD(Type, I),            {I,  {I, start_link,   []}, transient, 5000, Type, dynamic}).
--define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, transient, 5000, Type, dynamic}).
--define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, transient, 5000, Type, dynamic}).
+-define(CHILD(I),            {I,  {I, start_link,   []}, transient, infinity, worker, dynamic}).
+-define(CHILD(I, Args),      {I,  {I, start_link, Args}, transient, infinity, worker, dynamic}).
+-define(CHILD(ID, I, Args),  {ID, {I, start_link, Args}, transient, infinity, worker, dynamic}).
 
 
 %%
@@ -40,11 +40,21 @@ init([Mod, Args]) ->
    {ok,
       {
          strategy(Strategy),
-         Spec ++ [?CHILD(worker, pipe_builder, [self()])]
+         child_spec(Spec) ++ [?CHILD(pipe_supervisor_linker, [self()])]
       }
    }. 
 
+%%
 strategy({one_for_all, _, _} = Strategy) ->
    Strategy;
 strategy({_, Rate, Time}) ->
    {rest_for_one, Rate, Time}.
+
+%%
+child_spec(Spec) ->
+   child_spec(1, Spec).
+child_spec(Id, [{_, _, _} = Head | Tail]) ->
+   [{Id, Head, transient, infinity, worker, dynamic} | child_spec(Id + 1, Tail)];
+child_spec(_, []) ->
+   [].
+

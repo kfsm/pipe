@@ -17,7 +17,7 @@
 %%
 %% @doc
 %%   The process stays at supervisor tree, it re-build the pipeline after each restart
--module(pipe_builder).
+-module(pipe_supervisor_linker).
 -behaviour(pipe).
 
 -export([
@@ -38,7 +38,7 @@ free(_Reason, _Sup) ->
    ok.
 
 handle(rebuild, _, Sup) ->
-   pipe:make([Pid || {_, Pid, _, _} <- supervisor:which_children(Sup), Pid /= self()]),
+   pipe:make(lists:reverse([Pid || {_, Pid, _, _} <- supervisor:which_children(Sup), Pid /= self()])),
    {next_state, handle, Sup};
 
 handle(_, _, Sup) ->

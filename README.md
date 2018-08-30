@@ -13,23 +13,38 @@ The actor model is often criticized by amount of boilerplate code to define acto
 
 The latest version of the library is available at its `master` branch. All development, including new features and bug fixes, take place on the `master` branch using forking and pull requests as described in contribution guidelines.
 
-If you use rebar3 you can include the library in your project with
+The stable library release is available via hex packages, add the library as dependency to `rebar.config`
 
 ```
-{pipe, ".*",
-   {git, "https://github.com/kfsm/pipe", {branch, master}}
-}
+{deps, [{pipes}]}.
 ```
-
-### Usage
-
-The library exposes _public_ interface through exports of [pipe.erl](src/pipe.erl) module. Just call required function with required arguments, check out _More Information_ chapter for details. 
 
 Build library and run the development console
 ```
 make
 make run
 ```
+
+### Examples 
+
+The library provides various usage [examples](examples). 
+
+You can build and evaluate them running 
+
+```bash
+cd example-folder
+../../rebar3 compile
+erl -pa ../../_build/default/lib/*/ebin
+```
+
+
+
+
+### Usage
+
+The library exposes _public_ interface through exports of [pipe.erl](src/pipe.erl) module. Just call required function with required arguments, check out _More Information_ chapter for details. 
+
+
 
 
 

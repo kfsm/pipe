@@ -37,11 +37,11 @@ handle(In, Pipe, Fun) ->
       stop ->
          {stop, normal, Fun};
 
-      {a, Eg} ->
+      {a, Eg} when Eg /= undefined ->
          pipe:a(Pipe, Eg),
          {next_state, handle, Fun};
 
-      {b, Eg} ->
+      {b, Eg} when Eg /= undefined ->
          pipe:b(Pipe, Eg),
          {next_state, handle, Fun};
 

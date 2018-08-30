@@ -29,6 +29,7 @@
    start_link/3,
    start_link/4,
    supervisor/2,
+   supervisor/3,
    spawn/1,
    spawn_link/1,
    spawn_link/2,
@@ -78,7 +79,7 @@
 %%% data types
 %%%
 %%%------------------------------------------------------------------   
--export_type([pipe/0, f/0]).
+-export_type([pipe/0, fpipe/0, fpure/0]).
 
 %%
 %% The pipe is opaque data structure maintained by pipe process.
@@ -92,7 +93,8 @@
 %% pipe lambda expression is spawned within pipe process.
 %% It builds a new message by applying a function to all received message.
 %% The process emits the new message either to side (a) or (b). 
--type f() :: fun((_) -> {a, _} | {b, _} | _).
+-type fpipe() :: fun((_) -> {a, _} | {b, _} | _).
+-type fpure() :: fun((_) -> undefined | _).
 
 %%
 %% see datum:stream()
@@ -102,7 +104,7 @@
 %% the process monitor structure 
 -type monitor() :: {reference(), pid() | node()}.
 
-
+ 
 %%%------------------------------------------------------------------
 %%%
 %%% pipe behavior interface
@@ -169,10 +171,10 @@ start() ->
 %%
 %% start pipe state machine, the function takes behavior module,
 %% list of arguments to pipe init functions and list of container options.
--spec start(atom(), [_], [_]) -> {ok, pid()} | {error, any()}.
--spec start(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
--spec start_link(atom(), list(), list()) -> {ok, pid()} | {error, any()}.
--spec start_link(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
+-spec start(atom(), [_], [_]) -> {ok, pid()} | {error, _}.
+-spec start(atom(), atom(), list(), list()) -> {ok, pid()} | {error, _}.
+-spec start_link(atom(), list(), list()) -> {ok, pid()} | {error, _}.
+-spec start_link(atom(), atom(), list(), list()) -> {ok, pid()} | {error, _}.
 
 start(Mod, Args, Opts) ->
    gen_server:start(?CONFIG_PIPE, [Mod, Args], Opts).
@@ -191,28 +193,36 @@ start_link(Name, Mod, Args, Opts) ->
 supervisor(Mod, Args) ->
    pipe_supervisor:start_link(Mod, Args).
 
+supervisor(pipe, Strategy, Spec) ->
+   pipe_supervisor:start_link(pipe_supervisor_identity, 
+      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]]);
+
+supervisor(pure, Strategy, Spec) ->
+   pipe_supervisor:start_link(pipe_supervisor_identity, 
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]]).
+
 %%
-%% spawn pipe lambda expression
-%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
--spec spawn(f()) -> pid().
--spec spawn_link(f()) -> pid().
--spec spawn_link(f(), list()) -> pid().
+%% spawn pipe lambda expression, pipe lambda is a function that
+%%   fun/1 :: (_) -> {a, _} | {b, _} | _
+-spec spawn(fpipe()) -> {ok, pid()} | {error, _}.
+-spec spawn_link(fpipe()) -> {ok, pid()} | {error, _}.
+-spec spawn_link(fpipe(), [_]) -> {ok, pid()} | {error, _}.
 
 spawn(Fun) ->
-   either_pid( start(pipe_lambda, [Fun], []) ).
+   start(pipe_lambda, [Fun], []).
 
 spawn_link(Fun) ->
    pipe:spawn_link(Fun, []).
 
 spawn_link(Fun, Opts) ->
-   either_pid( start_link(pipe_lambda, [Fun], Opts) ).
+   start_link(pipe_lambda, [Fun], Opts).
 
 %%
-%% spawn pipe lambda expression
-%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
--spec fspawn(f()) -> {ok, pid()} | {error, _}.
--spec fspawn_link(f()) -> {ok, pid()} | {error, _}.
--spec fspawn_link(f(), list()) -> {ok, pid()} | {error, _}.
+%% spawn a pure function within a pipe, a pure function takes input and produces output
+%%   fun/1 :: (_) -> undefined | _
+-spec fspawn(fpure()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(fpure()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(fpure(), [_]) -> {ok, pid()} | {error, _}.
 
 fspawn(Fun) ->
    pipe:spawn(fun(X) -> {b, Fun(X)} end).
@@ -610,10 +620,10 @@ swap({pipe, A, B}) ->
 
 %%
 %%
-either_pid({ok, Pid}) -> 
-   Pid;
-either_pid({error, Reason}) ->
-   exit(Reason).
+% either_pid({ok, Pid}) -> 
+%    Pid;
+% either_pid({error, Reason}) ->
+%    exit(Reason).
 
 %%
 %% send message through pipe
