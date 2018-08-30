@@ -38,11 +38,15 @@
 
 %% internal state
 -record(machine, {
-   mod       = undefined :: atom()  %% FSM implementation
-  ,sid       = undefined :: atom()  %% FSM state (transition function)
-  ,state     = undefined :: any()   %% FSM internal data structure
-  ,a         = undefined :: pid()   %% pipe side (a) // source
-  ,b         = undefined :: pid()   %% pipe side (b) // sink
+   mod       = undefined :: atom(),    %% FSM implementation
+   sid       = undefined :: atom(),    %% FSM state (transition function)
+   state     = undefined :: any(),     %% FSM internal data structure
+   a         = undefined :: pid(),     %% pipe side (a) // source
+   b         = undefined :: pid(),     %% pipe side (b) // sink
+   acapacity = undefined :: integer(), %% pipe own capacity to forward a message
+   bcapacity = undefined :: integer(), %% pipe own capacity to forward a message
+   acredit   = undefined :: integer(), %% pipe available credits to forward message 
+   bcredit   = undefined :: integer()  %% pipe available credits to forward message 
 }).
 
 %%%----------------------------------------------------------------------------   
@@ -53,8 +57,14 @@
 
 %%
 %%
-init([Mod, Args]) ->
-   init(Mod:init(Args), #machine{mod=Mod}).
+init([Mod, Args, Opts]) ->
+   init(Mod:init(Args), 
+      #machine{
+         mod       = Mod,
+         acapacity = option(acapacity, Opts),
+         bcapacity = option(bcapacity, Opts)
+      }
+   ).
 
 init({ok, Sid, State}, S) ->
    {ok, S#machine{sid=Sid, state=State}};
@@ -74,36 +84,77 @@ terminate(Reason, #machine{mod=Mod, state=State}) ->
 
 %%
 %%
-handle_call(Msg, Tx, #machine{}=S) ->
+handle_call(Msg, Tx, #machine{} = S) ->
    % synchronous out-of-bound call to machine   
    ?DEBUG("pipe call ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
    run(Msg, make_pipe(Tx, S#machine.a, S#machine.b), S).
 
 %%
 %%
-handle_cast(_, S) ->
-   {noreply, S}.
+handle_cast(_, State) ->
+   {noreply, State}.
 
 %%
 %%
-handle_info({'$pipe', _Tx, {ioctl, a, Pid}}, S) ->
+handle_info({'$pipe', _Tx, {ioctl, a, Pid}}, #machine{acapacity = undefined} = State) ->
    ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
    pipe:monitor(Pid),
-   {noreply, S#machine{a=Pid}};
+   {noreply, State#machine{a = Pid}};
+
+handle_info({'$pipe', _Tx, {ioctl, a, Pid}}, #machine{acapacity = N} = State) ->
+   ?DEBUG("pipe ~p: bind a to ~p", [self(), Pid]),
+   pipe:monitor(Pid),
+   pipe:ioctl_(Pid, {bcredit, N}),
+   {noreply, State#machine{a = Pid}};
 
 handle_info({'$pipe', Tx, {ioctl, a}}, S) ->
    pipe:ack(Tx, {ok, S#machine.a}),
    {noreply, S};
 
-handle_info({'$pipe', _Tx, {ioctl, b, Pid}}, S) ->
+%%
+handle_info({'$pipe', _Tx, {ioctl, b, Pid}}, #machine{bcapacity = undefined} = State) ->
    ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
    pipe:monitor(Pid),
-   {noreply, S#machine{b=Pid}};
+   {noreply, State#machine{b = Pid}};
+
+handle_info({'$pipe', _Tx, {ioctl, b, Pid}}, #machine{bcapacity = N} = State) ->
+   ?DEBUG("pipe ~p: bind b to ~p", [self(), Pid]),
+   pipe:monitor(Pid),
+   pipe:ioctl_(Pid, {acredit, N}),
+   {noreply, State#machine{b = Pid}};
 
 handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S};
 
+%%
+handle_info({'$pipe', _Tx, {ioctl, acredit, N}}, #machine{} = State) ->
+   ?DEBUG("pipe ~p: link a credit to ~p", [self(), N]),
+   {noreply, State#machine{acredit = N}};
+
+handle_info({'$pipe', Tx, {ioctl, acredit}}, #machine{acredit = Credit} = State) ->
+   pipe:ack(Tx, {ok, Credit}),
+   {noreply, State};
+
+%%
+handle_info({'$pipe', _Tx, {ioctl, bcredit, N}}, #machine{} = State) ->
+   ?DEBUG("pipe ~p: link b credit to ~p", [self(), N]),
+   {noreply, State#machine{bcredit = N}};
+
+handle_info({'$pipe', Tx, {ioctl, bcredit}}, #machine{bcredit = Credit} = State) ->
+   pipe:ack(Tx, {ok, Credit}),
+   {noreply, State};
+
+%%
+handle_info({'$pipe', Tx, {ioctl, acapacity}}, #machine{acapacity = N} = State) ->
+   pipe:ack(Tx, {ok, N}),
+   {noreply, State};
+
+handle_info({'$pipe', Tx, {ioctl, bcapacity}}, #machine{bcapacity = N} = State) ->
+   pipe:ack(Tx, {ok, N}),
+   {noreply, State};
+
+%%
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
    % ioctl set request
    ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
@@ -145,6 +196,7 @@ handle_info({'$pipe', Tx, '$free'}, State) ->
          {noreply, State}
    end;
 
+
 handle_info({'$pipe', Tx, Msg}, #machine{a = A, b = B}=State) ->   
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
@@ -167,6 +219,16 @@ code_change(_Vsn, S, _) ->
 %%%----------------------------------------------------------------------------   
 
 %%
+%%
+option(Key, Opts) ->
+   case lists:keyfind(Key, 1, Opts) of
+      false ->
+         undefined;
+      {_,X} ->
+         X
+   end.
+
+%%
 %% make pipe object for side-effect
 %% Input:
 %%   Tx - identity of pipe transaction
@@ -180,7 +242,7 @@ make_pipe(B, A, B) ->
    {pipe, B, A};
 make_pipe(Tx, A, B)
  when Tx =:= self() ->
-   % Tx =:= self() -> message is emited by itself
+   % Tx =:= self() -> message is emitted by itself
    {pipe, A, B};
 make_pipe(Tx, undefined, B) ->
    % process is not connected to side A
@@ -196,13 +258,13 @@ make_pipe(Tx, A, _B) ->
 
 %%
 %% run state machine
-run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
+run(Msg, Pipe, #machine{mod=Mod, sid=Sid0} = S) ->
    case Mod:Sid0(Msg, Pipe, S#machine.state) of
       {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
+         {noreply, credit_control(pipe:b(Pipe), S#machine{sid=Sid, state=State})};
 
       {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
+         {noreply, credit_control(pipe:b(Pipe), S#machine{sid=Sid, state=State}), TorH};
 
       {reply, Reply, State} ->
          pipe:ack(Pipe, Reply),
@@ -227,4 +289,29 @@ run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
       {stop, Reason, State} ->
          {stop, Reason, S#machine{state=State}}
    end.
+
+%%
+%%
+credit_control(undefined, #machine{} = State) ->
+   State;
+
+credit_control(A, #machine{a = A, acredit = undefined} = State) ->
+   State;
+
+credit_control(B, #machine{b = B, bcredit = undefined} = State) ->
+   State;
+
+credit_control(A, #machine{a = A, acredit = 0} = State) ->
+   {ok, N} = pipe:ioctl(A, bcapacity),
+   State#machine{acredit = N};
+
+credit_control(A, #machine{a = A, acredit = Credit} = State) ->
+   State#machine{acredit = Credit - 1};
+
+credit_control(B, #machine{b = B, bcredit = 0} = State) ->
+   {ok, N} = pipe:ioctl(B, acapacity),
+   State#machine{bcredit = N};
+
+credit_control(B, #machine{b = B, bcredit = Credit} = State) ->
+   State#machine{bcredit = Credit - 1}.
 

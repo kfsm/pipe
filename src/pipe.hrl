@@ -15,7 +15,7 @@
 %%   See the License for the specific language governing permissions and
 %%   limitations under the License.
 %%
-%-define(CONFIG_DEBUG, true).
+% -define(CONFIG_DEBUG, true).
 
 -ifdef(CONFIG_DEBUG).
    -define(DEBUG(Str, Args), error_logger:info_msg(Str, Args)).
