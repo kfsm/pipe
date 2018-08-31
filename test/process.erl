@@ -43,9 +43,6 @@ handle(do_stop, Pipe, State) ->
    pipe:ack(Pipe, ok),
    {stop, normal, State};
 
-handle(do_upgrade, Pipe, State) ->
+handle(do_upgrade, Pipe, _) ->
    pipe:ack(Pipe, ok),
-   {upgrade, ?MODULE, []};
-
-handle(Msg, Pipe, State) ->
-   {next_state, handle, State}.
+   {upgrade, ?MODULE, []}.

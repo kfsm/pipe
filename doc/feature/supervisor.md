@@ -10,7 +10,7 @@ The pipe supervisor implements one of the following restart strategies:
 * `rest_for_one` - pipeline is partially restarted depends, starting from failed stage.  
 
 
-The usage of pipe supervisor does not differs from traditional one. You defines restart strategy and list of children with spawn (see [full example](examples/supervisor/src/one_for_all_sup.erl)). A child spec is only exception, pipeline always consists of transient worker processes. Therefore, you only need to specify a module, function and arguments for each stage processes.
+The usage of pipe supervisor does not differs from traditional one. You defines restart strategy and list of children with spawn, see [full example](examples/supervisor/src/one_for_all_sup.erl). A child spec is only exception, pipeline always consists of transient worker processes. Therefore, you only need to specify a module, function and arguments for each stage processes.
 
 
 ```erlang
@@ -29,7 +29,7 @@ init([]) ->
    }.
 ```
 
-The library also supports shortcuts for pipeline composition build either from pipe or pure functions.
+The library also supports shortcuts for pipeline composition build either from pipe or pure functions. See [full example](examples/supervisor/src/composition_sup.erl)
 
 ```
 pipe:supervisor(pipe | pure | stream, {one_for_one, 1, 3600}, [
@@ -38,8 +38,3 @@ pipe:supervisor(pipe | pure | stream, {one_for_one, 1, 3600}, [
    ...
 ]).
 ```
-
-
-
-
-

@@ -169,14 +169,3 @@ recv_from(Tx) ->
       after 100 ->
          exit(timeout)
    end.
-
-%%
-%%
-send_to(Sup, Msg) ->
-   pipe:send(pipe:head(Sup), Msg),
-   receive
-      {ok, Result} -> Result
-   after 100  -> 
-      ct:fail(timeout)
-   end.
-
