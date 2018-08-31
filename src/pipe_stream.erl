@@ -19,6 +19,7 @@
 %%   pipe stream is a computation using notation of streams
 %%   see https://github.com/fogfish/datum for details
 -module(pipe_stream).
+-include_lib("common_test/include/ct.hrl").
 
 -export([
    start_link/2,
@@ -35,44 +36,35 @@ init(Parent, Stream, Opts) ->
       true  -> call;
       false -> send
    end,
-   setup(Stream, Send, undefined, undefined).
+   stream(Stream, Send, undefined, undefined).
    
-%%
-%% setup phase, stream stage is bound to side (a) and side (b)
-setup(Stream, Send, A, B) ->
-   receive
-      %% bind side a
-      {'$pipe', _, {ioctl, a, Pid}} when B =:= undefined ->
-         setup(Stream, Send, Pid, B);
-
-      {'$pipe', _, {ioctl, a, Pid}} ->
-         stream(Stream, Send, Pid, B);
-
-      %% bind side b
-      {'$pipe', _, {ioctl, b, Pid}} when A =:= undefined ->
-         setup(Stream, Send, A,  Pid);
-
-      {'$pipe', _, {ioctl, b, Pid}} ->
-         stream(Stream, Send, A, Pid)
-   end.
-
 %%
 %% execution phase, stream stage is bound
 stream(Stream, Send, A, B) ->
-   stream:foreach(
-      fun(X) -> pipe:Send(B, X) end,
-      stream:filter(
-         fun(X) -> X /= undefined end,
-         Stream(message(A))
+   case
+      catch stream:foreach(
+         fun(X) -> pipe:Send(B, X) end,
+         stream:filter(
+            fun(X) -> X /= undefined end,
+            Stream(message(A))
+         )
       )
-   ).
+   of
+      {ioctl, a, Pid} ->
+         stream(Stream, Send, Pid, B);
+      {ioctl, b, Pid} ->
+         stream(Stream, Send, A, Pid);
+      Reason ->
+         exit(Reason)
+   end.
+
 
 %%
 %% message stream
 message(A) ->
    receive
-      {'$pipe', _, {ioctl, _, _}} ->
-         message(A);
+      {'$pipe', _, {ioctl, _, _} = Setup} ->
+         throw(Setup);
 
       {'$pipe', _, {ioctl, _}} ->
          message(A);
@@ -80,7 +72,7 @@ message(A) ->
       {'$pipe', Tx, Msg} ->
          stream:new(Msg, 
             fun() ->
-               %% acknowledge message one it is consumed  
+               %% Note: this code acknowledges received message once it is consumed by stream handler  
                pipe:ack(Tx, ok),
                message(A) 
             end

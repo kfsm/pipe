@@ -32,6 +32,9 @@ init([Fun]) ->
 free(_, _Fun) ->
    ok.
 
+handle({sidedown, _, _}, _, Fun) ->
+   {next_state, handle, Fun};
+
 handle(In, Pipe, Fun) ->
    case Fun(In) of
       stop ->

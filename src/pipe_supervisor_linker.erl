@@ -31,16 +31,26 @@ start_link(Sup) ->
    pipe:start_link(?MODULE, [Sup], []).
 
 init([Sup]) ->
-   erlang:send(self(), rebuild),
+   self() ! link,
    {ok, handle, Sup}.
 
 free(_Reason, _Sup) ->
    ok.
 
-handle(rebuild, _, Sup) ->
-   pipe:make(lists:reverse([Pid || {_, Pid, _, _} <- supervisor:which_children(Sup), Pid /= self()])),
+handle(link, _, Sup) ->
+   pipe:make(
+      lists:map(
+         fun({_, Pid, _, _}) -> Pid end,
+         lists:keysort(1,
+            lists:filter(
+               fun({_, Pid, _, _}) -> Pid /= self() end,
+               supervisor:which_children(Sup)
+            )
+         )
+      )
+   ),
    {next_state, handle, Sup};
 
-handle(_, _, Sup) ->
-   {next_state, handle, Sup}.
+handle(is_linked, _, Sup) ->
+   {reply, ok, Sup}.
 

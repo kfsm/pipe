@@ -22,7 +22,8 @@
 
 -export([
    start_link/2, 
-   init/1
+   init/1,
+   head/1
 ]).
 
 %%
@@ -33,7 +34,11 @@
 
 %%
 start_link(Mod, Args) ->
-   supervisor:start_link(?MODULE, [Mod, Args]).
+   {ok, Sup} = supervisor:start_link(?MODULE, [Mod, Args]),
+   %% Note: supervisor shall grantee determinism, boot-up is blocked until pipeline is linked
+   {_, Linker, _, _} = lists:keyfind(pipe_supervisor_linker, 1, supervisor:which_children(Sup)),
+   ok = pipe:call(Linker, is_linked, infinity),
+   {ok, Sup}.
    
 init([Mod, Args]) ->
    {ok, {Strategy, Spec}} = Mod:init(Args),
@@ -58,3 +63,10 @@ child_spec(Id, [{_, _, _} = Head | Tail]) ->
 child_spec(_, []) ->
    [].
 
+%%
+head(Sup) ->
+   erlang:element(2,
+      lists:keyfind(1, 1, 
+         supervisor:which_children(Sup)
+      )
+   ).

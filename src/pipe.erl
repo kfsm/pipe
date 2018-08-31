@@ -28,8 +28,9 @@
    start/4,
    start_link/3,
    start_link/4,
-   supervisor/2,
-   supervisor/3,
+   supervise/2,
+   supervise/3,
+   head/1,
    spawn/1,
    spawn_link/1,
    spawn_link/2,
@@ -188,18 +189,29 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% start supervise-able pipeline
--spec supervisor(atom(), [_]) -> {ok, pid()} | {error, any()}.
+-spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 
-supervisor(Mod, Args) ->
+supervise(Mod, Args) ->
    pipe_supervisor:start_link(Mod, Args).
 
-supervisor(pipe, Strategy, Spec) ->
+supervise(pipe, Strategy, Spec) ->
    pipe_supervisor:start_link(pipe_supervisor_identity, 
       [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]]);
 
-supervisor(pure, Strategy, Spec) ->
+supervise(pure, Strategy, Spec) ->
    pipe_supervisor:start_link(pipe_supervisor_identity, 
-      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]]).
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]]);
+
+supervise(stream, Strategy, Spec) ->
+   pipe_supervisor:start_link(pipe_supervisor_identity, 
+      [Strategy, [{pipe, stream, [X]} || X <- Spec]]).
+
+%%
+%% return head of supervised pipeline 
+-spec head(pid()) -> pid().
+
+head(Sup) ->
+   pipe_supervisor:head(Sup).
 
 %%
 %% spawn pipe lambda expression, pipe lambda is a function that
