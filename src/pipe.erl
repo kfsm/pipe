@@ -631,13 +631,6 @@ swap({pipe, A, B}) ->
 %%%----------------------------------------------------------------------------   
 
 %%
-%%
-% either_pid({ok, Pid}) -> 
-%    Pid;
-% either_pid({error, Reason}) ->
-%    exit(Reason).
-
-%%
 %% send message through pipe
 pipe_send(Pid, Tx, Msg, Opts)
  when ?is_pid(Pid) ->
