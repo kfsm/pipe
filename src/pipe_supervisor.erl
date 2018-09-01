@@ -21,7 +21,7 @@
 -behaviour(supervisor).
 
 -export([
-   start_link/2, 
+   start_link/3,
    init/1,
    head/1
 ]).
@@ -33,19 +33,19 @@
 
 
 %%
-start_link(Mod, Args) ->
-   {ok, Sup} = supervisor:start_link(?MODULE, [Mod, Args]),
+start_link(Capacity, Mod, Args) ->
+   {ok, Sup} = supervisor:start_link(?MODULE, [Capacity, Mod, Args]),
    %% Note: supervisor shall grantee determinism, boot-up is blocked until pipeline is linked
    {_, Linker, _, _} = lists:keyfind(pipe_supervisor_linker, 1, supervisor:which_children(Sup)),
    ok = pipe:call(Linker, is_linked, infinity),
    {ok, Sup}.
    
-init([Mod, Args]) ->
+init([Capacity, Mod, Args]) ->
    {ok, {Strategy, Spec}} = Mod:init(Args),
    {ok,
       {
          strategy(Strategy),
-         child_spec(Spec) ++ [?CHILD(pipe_supervisor_linker, [self()])]
+         child_spec(Spec) ++ [?CHILD(pipe_supervisor_linker, [self(), Capacity])]
       }
    }. 
 

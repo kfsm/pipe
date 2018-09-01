@@ -21,36 +21,47 @@
 -behaviour(pipe).
 
 -export([
-   start_link/1,
+   start_link/2,
    init/1,
    free/2,
    handle/3
 ]). 
 
-start_link(Sup) ->
-   pipe:start_link(?MODULE, [Sup], []).
+start_link(Sup, Capacity) ->
+   pipe:start_link(?MODULE, [Sup, Capacity], []).
 
-init([Sup]) ->
-   self() ! link,
+init([Sup, Capacity]) ->
+   self() ! {link, Capacity},
    {ok, handle, Sup}.
 
 free(_Reason, _Sup) ->
    ok.
 
-handle(link, _, Sup) ->
-   pipe:make(
-      lists:map(
-         fun({_, Pid, _, _}) -> Pid end,
-         lists:keysort(1,
-            lists:filter(
-               fun({_, Pid, _, _}) -> Pid /= self() end,
-               supervisor:which_children(Sup)
-            )
-         )
-      )
-   ),
+handle({link, undefined}, _, Sup) ->
+   pipe:make(stages(Sup)),
+   {next_state, handle, Sup};
+
+handle({link, Capacity}, _, Sup) ->
+   pipe:make([set_stage_capacity(Pid, Capacity) || Pid <- stages(Sup)]),
    {next_state, handle, Sup};
 
 handle(is_linked, _, Sup) ->
    {reply, ok, Sup}.
+
+
+stages(Sup) ->
+   lists:map(
+      fun({_, Pid, _, _}) -> Pid end,
+      lists:keysort(1,
+         lists:filter(
+            fun({_, Pid, _, _}) -> Pid /= self() end,
+            supervisor:which_children(Sup)
+         )
+      )
+   ).
+
+set_stage_capacity(Pid, Capacity) ->
+   pipe:ioctl_(Pid, {capacity, Capacity}),
+   Pid.
+
 
