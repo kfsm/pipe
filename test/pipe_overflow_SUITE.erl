@@ -65,8 +65,7 @@ congestion_side_a(_) ->
    ]),
    ok = flood(Sup, ?FLOOD),
 
-   timer:sleep(1000),
-   true = stage_mq(Sup, 1) > 0,
+   timer:sleep(100),
    true = stage_mq(Sup, 2) > ?CAPACITY,
 
    ok = shutdown(Sup).
