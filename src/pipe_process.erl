@@ -129,10 +129,10 @@ handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
    end;
 
 handle_info({'$pipe', Tx, {ioctl, side_a_capacity}}, #machine{capacity = C}=S) ->
-   pipe:ack(Tx, {side_a_credit, C}),
+   pipe:ack(Tx, {side_a_credit, C + rand:uniform(C)}),
    {noreply, S};
 handle_info({'$pipe', Tx, {ioctl, side_b_capacity}}, #machine{capacity = C}=S) ->
-   pipe:ack(Tx, {side_b_credit, C}),
+   pipe:ack(Tx, {side_b_credit, C + rand:uniform(C)}),
    {noreply, S};
 
 handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
