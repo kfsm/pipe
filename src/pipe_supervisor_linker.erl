@@ -27,22 +27,20 @@
    handle/3
 ]). 
 
-start_link(Sup, Capacity) ->
-   pipe:start_link(?MODULE, [Sup, Capacity], []).
+start_link(Sup, Opts) ->
+   pipe:start_link(?MODULE, [Sup, Opts], []).
 
-init([Sup, Capacity]) ->
-   self() ! {link, Capacity},
+init([Sup, Opts]) ->
+   self() ! {link, proplists:get_value(capacity, Opts), proplists:get_value(side_a, Opts)},
    {ok, handle, Sup}.
 
 free(_Reason, _Sup) ->
    ok.
 
-handle({link, undefined}, _, Sup) ->
-   pipe:make(stages(Sup)),
-   {next_state, handle, Sup};
-
-handle({link, Capacity}, _, Sup) ->
-   pipe:make([set_stage_capacity(Pid, Capacity) || Pid <- stages(Sup)]),
+handle({link, Capacity, SideA}, _, Sup) ->
+   link_side_a(SideA, 
+      pipe:make([set_stage_capacity(Capacity, Pid) || Pid <- stages(Sup)])
+   ),
    {next_state, handle, Sup};
 
 handle(is_linked, _, Sup) ->
@@ -60,8 +58,16 @@ stages(Sup) ->
       )
    ).
 
-set_stage_capacity(Pid, Capacity) ->
+%%
+set_stage_capacity(undefined, Pid) ->
+   Pid;
+set_stage_capacity(Capacity, Pid) ->
    pipe:ioctl_(Pid, {capacity, Capacity}),
    Pid.
 
+%%
+link_side_a(undefined, Pid) ->
+   Pid;
+link_side_a(SideA, Pid) ->
+   pipe:bind(a, Pid, SideA).
 

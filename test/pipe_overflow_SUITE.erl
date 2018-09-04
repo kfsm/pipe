@@ -24,13 +24,13 @@ no_dead_lock(_) ->
    process_flag(trap_exit, true),
 
    Self = self(),
-   {ok, Sup} = pipe:supervise(pipe, ?CAPACITY, ?STRATEGY, [
+   {ok, Sup} = pipe:supervise(pipe, ?STRATEGY, [
       fun({_, _} = X) -> Self ! X; (X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(X) -> timer:sleep(rand:uniform(4)), {b, X} end,
       fun(X) -> {a, {ok, X}} end
-   ]),
+   ], [{capacity, ?CAPACITY}]),
    ok = flood_and_recv(Sup, ?FLOOD),
    ok = shutdown(Sup).
 
@@ -38,16 +38,16 @@ no_dead_lock(_) ->
 %%
 congestion_side_b(_) ->
    process_flag(trap_exit, true),
-   {ok, Sup} = pipe:supervise(pipe, ?CAPACITY, ?STRATEGY, [
+   {ok, Sup} = pipe:supervise(pipe, ?STRATEGY, [
       fun(X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(_) -> timer:sleep(1000000) end
-   ]),
+   ], [{capacity, ?CAPACITY}]),
    ok = flood(Sup, ?FLOOD),
 
    timer:sleep(1000),
-   true = stage_mq(Sup, 1) > (?FLOOD - 3 * ?CAPACITY),
+   true = stage_mq(Sup, 1) > 0,
    true = stage_mq(Sup, 2) > 0,
    true = stage_mq(Sup, 3) > 0,
    true = stage_mq(Sup, 4) > ?CAPACITY,
@@ -57,12 +57,12 @@ congestion_side_b(_) ->
 
 congestion_side_a(_) ->
    process_flag(trap_exit, true),
-   {ok, Sup} = pipe:supervise(pipe, ?CAPACITY, ?STRATEGY, [
+   {ok, Sup} = pipe:supervise(pipe, ?STRATEGY, [
       fun(X) -> {b, X} end,
       fun({_, _}) -> timer:sleep(1000000); (X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(X) -> {a, {ok, X}} end
-   ]),
+   ], [{capacity, ?CAPACITY}]),
    ok = flood(Sup, ?FLOOD),
 
    timer:sleep(100),

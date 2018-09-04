@@ -190,6 +190,9 @@ start_link(Name, Mod, Args, Opts) ->
 
 %%
 %% start supervise-able pipeline
+%% Options:
+%%   * capacity
+%%   * side_a
 -spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 
 supervise(Mod, Args) ->
@@ -197,33 +200,50 @@ supervise(Mod, Args) ->
 
 
 supervise(pipe, Strategy, Spec) ->
-   pipe_supervisor:start_link(undefined, pipe_supervisor_identity, 
-      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]]);
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]],
+      []
+   );
 
 supervise(pure, Strategy, Spec) ->
-   pipe_supervisor:start_link(undefined, pipe_supervisor_identity, 
-      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]]);
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
+      []
+   );
 
 supervise(stream, Strategy, Spec) ->
-   pipe_supervisor:start_link(undefined, pipe_supervisor_identity, 
-      [Strategy, [{pipe, stream, [X]} || X <- Spec]]);
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, stream, [X]} || X <- Spec]],
+      []
+   );
 
-supervise(Capacity, Mod, Args)
- when is_integer(Capacity) ->
-   pipe_supervisor:start_link(Capacity, Mod, Args).
+supervise(Mod, Args, Opts) ->
+   pipe_supervisor:start_link(Mod, Args, Opts).
 
 
-supervise(pipe, Capacity, Strategy, Spec) ->
-   pipe_supervisor:start_link(Capacity, pipe_supervisor_identity, 
-      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]]);
+supervise(pipe, Strategy, Spec, Opts) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]],
+      Opts
+   );
 
-supervise(pure, Capacity, Strategy, Spec) ->
-   pipe_supervisor:start_link(Capacity, pipe_supervisor_identity, 
-      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]]);
+supervise(pure, Strategy, Spec, Opts) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
+      Opts
+   );
 
-supervise(stream, Capacity, Strategy, Spec) ->
-   pipe_supervisor:start_link(Capacity, pipe_supervisor_identity, 
-      [Strategy, [{pipe, stream, [X]} || X <- Spec]]).
+supervise(stream, Strategy, Spec, Opts) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, stream, [X]} || X <- Spec]],
+      Opts
+   ).
 
 %%
 %% return head of supervised pipeline 
