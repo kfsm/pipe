@@ -191,8 +191,10 @@ start_link(Name, Mod, Args, Opts) ->
 %%
 %% start supervise-able pipeline
 %% Options:
-%%   * attach   - attach a process to head of pipeline
-%%   * attach_a - attach a process to side a of pipeline
+%%   * join_side_a - join a process to pipeline on side a (head)
+%%   * join_side_b - join a process to pipeline on side b (tail)
+%%   * heir_side_a - heir process receives results of pipeline at side a
+%%   * heir_side_b - heir process receives results of pipeline at side b
 %%   * capacity - set capacity of flow control buffers
 -spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 

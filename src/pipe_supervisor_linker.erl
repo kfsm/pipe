@@ -27,31 +27,51 @@
    handle/3
 ]). 
 
+-record(state, {
+   join_side_a = undefined :: undefined | pid(),
+   join_side_b = undefined :: undefined | pid(),
+   heir_side_a = undefined :: undefined | pid(),
+   heir_side_b = undefined :: undefined | pid(),
+   capacity    = undefined :: undefined | pid(),
+   supervisor  = undefined :: undefined | pid() 
+}).
+
 start_link(Sup, Opts) ->
    pipe:start_link(?MODULE, [Sup, Opts], []).
 
 init([Sup, Opts]) ->
-   self() ! {link, Opts},
-   {ok, handle, Sup}.
+   self() ! link,
+   {ok, handle, 
+      #state{
+         join_side_a = proplists:get_value(join_side_a, Opts),
+         join_side_b = proplists:get_value(join_side_b, Opts),
+         heir_side_a = proplists:get_value(heir_side_a, Opts),
+         heir_side_b = proplists:get_value(heir_side_b, Opts),
+         capacity    = proplists:get_value(capacity, Opts),
+         supervisor  = Sup
+      }
+   }.
 
-free(_Reason, _Sup) ->
+free(_Reason, _State) ->
    ok.
 
-handle({link, Opts}, _, Sup) ->
-   attach_side_a(Opts, 
-      pipe:make(
-         attach_pipe(Opts, 
-            [stage_capacity(Opts, Pid) || Pid <- stages(Sup)]
+handle(link, _, State) ->
+   heir_side(State,
+      build(
+         join_side(State,
+            capacity(State, 
+               stages(State)
+            )
          )
       )
    ),
-   {next_state, handle, Sup};
+   {next_state, handle, State};
 
-handle(is_linked, _, Sup) ->
-   {reply, ok, Sup}.
+handle(is_linked, _, State) ->
+   {reply, ok, State}.
 
 %%
-stages(Sup) ->
+stages(#state{supervisor = Sup}) ->
    lists:map(
       fun({_, Pid, _, _}) -> Pid end,
       lists:keysort(1,
@@ -63,30 +83,40 @@ stages(Sup) ->
    ).
 
 %%
-stage_capacity(Opts, Pid) ->
-   do_stage_capacity(proplists:get_value(capacity, Opts), Pid).
+capacity(#state{capacity = undefined}, Stages) ->
+   Stages;
+capacity(#state{capacity = Capacity}, Stages) ->
+   [stage_capacity(Capacity, Pid) || Pid <- Stages].
 
-do_stage_capacity(undefined, Pid) ->
-   Pid;
-do_stage_capacity(Capacity, Pid) ->
+stage_capacity(Capacity, Pid) ->
    pipe:ioctl_(Pid, {capacity, Capacity}),
    Pid.
 
 %%
-attach_pipe(Opts, Pids) ->
-   do_attach_pipe(proplists:get_value(attach, Opts), Pids).
-
-do_attach_pipe(undefined, Pids) ->
-   Pids;
-do_attach_pipe(Pid, Pids) ->
-   [Pid | Pids].
+join_side(#state{join_side_a = undefined, join_side_b = undefined}, Stages) ->
+   Stages;
+join_side(#state{join_side_a = SideA, join_side_b = undefined}, Stages) ->
+   [SideA | Stages];
+join_side(#state{join_side_a = undefied, join_side_b = SideB}, Stages) ->
+   Stages ++ [SideB];
+join_side(#state{join_side_a = SideA, join_side_b = SideB}, Stages) ->
+   [SideA | Stages] ++ [SideB].
 
 %%
-attach_side_a(Opts, Pid) ->
-   do_attach_side_a(proplists:get_value(attach, Opts), Pid).
+build(Stages) ->
+   pipe:make(Stages),
+   Stages.
 
-do_attach_side_a(undefined, Pid) ->
-   Pid;
-do_attach_side_a(SideA, Pid) ->
-   pipe:bind(a, Pid, SideA).
-
+%%
+heir_side(#state{heir_side_a = undefined, heir_side_b = undefined}, Stages) ->
+   Stages;
+heir_side(#state{heir_side_a = SideA, heir_side_b = undefined}, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   Stages;
+heir_side(#state{heir_side_a = undefined, heir_side_b = SideB}, Stages) ->
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages;
+heir_side(#state{heir_side_a = SideA, heir_side_b = SideB}, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages.
