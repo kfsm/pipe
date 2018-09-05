@@ -166,7 +166,7 @@ start() ->
 
 %%%------------------------------------------------------------------
 %%%
-%%% pipe management interface
+%%% factory interface
 %%%
 %%%------------------------------------------------------------------   
 
@@ -191,8 +191,9 @@ start_link(Name, Mod, Args, Opts) ->
 %%
 %% start supervise-able pipeline
 %% Options:
-%%   * capacity
-%%   * side_a
+%%   * attach   - attach a process to head of pipeline
+%%   * attach_a - attach a process to side a of pipeline
+%%   * capacity - set capacity of flow control buffers
 -spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 
 supervise(Mod, Args) ->
@@ -244,13 +245,6 @@ supervise(stream, Strategy, Spec, Opts) ->
       [Strategy, [{pipe, stream, [X]} || X <- Spec]],
       Opts
    ).
-
-%%
-%% return head of supervised pipeline 
--spec head(pid()) -> pid().
-
-head(Sup) ->
-   pipe_supervisor:head(Sup).
 
 %%
 %% spawn pipe lambda expression, pipe lambda is a function that
@@ -308,6 +302,18 @@ free(Pipeline)
  when is_list(Pipeline) ->
    lists:foreach(fun free/1, Pipeline).
 
+%%%------------------------------------------------------------------
+%%%
+%%% connectivity interface
+%%%
+%%%------------------------------------------------------------------   
+
+%%
+%% return head of supervised pipeline 
+-spec head(pid()) -> pid().
+
+head(Sup) ->
+   pipe_supervisor:head(Sup).
 
 %%
 %% bind stage(s) together defining processing pipeline
@@ -355,6 +361,13 @@ make(Pipeline) ->
       Tail
    ),
    hd(Pipeline).
+
+
+%%%------------------------------------------------------------------
+%%%
+%%% management interface
+%%%
+%%%------------------------------------------------------------------   
 
 %%
 %% ioctl interface (sync and async)
@@ -418,7 +431,7 @@ demonitor({node, _, Node}) ->
 
 %%%------------------------------------------------------------------
 %%%
-%%% pipe i/o interface
+%%% i/o interface
 %%%
 %%%------------------------------------------------------------------   
 
