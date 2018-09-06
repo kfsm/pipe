@@ -4,8 +4,7 @@
 -export([all/0]).
 -export([
    puref/1,
-   pipef/1,
-   stream/1
+   pipef/1
 ]).
 
 all() ->
@@ -38,20 +37,6 @@ pipef(_) ->
       fun(X) -> {b, X} end,
       fun(X) -> {b, X} end,
       fun(X) -> Self ! {ok, X} end
-   ]),
-   1 = send_to(Sup, 1),
-   ok = shutdown(Sup).
-
-%%
-%%
-stream(_) ->
-   process_flag(trap_exit, true),
-   Self = self(),
-   {ok, Sup} = pipe:supervise(stream, {one_for_all, 0, 1}, [
-      fun(Stream) -> stream:map(fun(X) -> X end, Stream) end,
-      fun(Stream) -> stream:map(fun(X) -> X end, Stream) end,
-      fun(Stream) -> stream:map(fun(X) -> X end, Stream) end,
-      fun(Stream) -> stream:map(fun(X) -> Self ! {ok, X}, undefined end, Stream) end
    ]),
    1 = send_to(Sup, 1),
    ok = shutdown(Sup).

@@ -38,11 +38,10 @@
    fspawn/1,
    fspawn_link/1,
    fspawn_link/2,
-   stream/1,
-   stream/2,
    bind/2,
    bind/3,
    make/1,
+   make/2,
    free/1,
    monitor/1,
    monitor/2,
@@ -97,10 +96,6 @@
 %% The process emits the new message either to side (a) or (b). 
 -type fpipe() :: fun((_) -> {a, _} | {b, _} | _).
 -type fpure() :: fun((_) -> undefined | _).
-
-%%
-%% see datum:stream()
--type stream() :: {s, _, _}.
 
 %%
 %% the process monitor structure 
@@ -188,18 +183,13 @@ start_link(Mod, Args, Opts) ->
 start_link(Name, Mod, Args, Opts) ->
    gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
 
+
 %%
 %% start supervise-able pipeline
-%% Options:
-%%   * join_side_a - join a process to pipeline on side a (head)
-%%   * join_side_b - join a process to pipeline on side b (tail)
-%%   * heir_side_a - heir process receives results of pipeline at side a
-%%   * heir_side_b - heir process receives results of pipeline at side b
-%%   * capacity - set capacity of flow control buffers
 -spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 
 supervise(Mod, Args) ->
-   pipe_supervisor:start_link(undefined, Mod, Args).
+   pipe_supervisor:start_link(Mod, Args, []).
 
 
 supervise(pipe, Strategy, Spec) ->
@@ -213,13 +203,6 @@ supervise(pure, Strategy, Spec) ->
    pipe_supervisor:start_link(
       pipe_supervisor_identity, 
       [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
-      []
-   );
-
-supervise(stream, Strategy, Spec) ->
-   pipe_supervisor:start_link(
-      pipe_supervisor_identity, 
-      [Strategy, [{pipe, stream, [X]} || X <- Spec]],
       []
    );
 
@@ -238,13 +221,6 @@ supervise(pure, Strategy, Spec, Opts) ->
    pipe_supervisor:start_link(
       pipe_supervisor_identity, 
       [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
-      Opts
-   );
-
-supervise(stream, Strategy, Spec, Opts) ->
-   pipe_supervisor:start_link(
-      pipe_supervisor_identity, 
-      [Strategy, [{pipe, stream, [X]} || X <- Spec]],
       Opts
    ).
 
@@ -281,19 +257,6 @@ fspawn_link(Fun, Opts) ->
    pipe:spawn_link(fun(X) -> {b, Fun(X)} end, Opts).
 
 %%
-%% spawn stream processing within pipes  
-%% Options
-%%   sync - use synchronous i/o 
--spec stream(stream()) -> {ok, pid()} | {error, _}.
--spec stream(stream(), list()) -> {ok, pid()} | {error, _}.
-
-stream(Stream) ->
-   stream(Stream, []).
-
-stream(Stream, Opts) ->
-   pipe_stream:start_link(Stream, Opts).
-
-%%
 %% terminate pipe or pipeline
 -spec free(pid() | [pid()]) -> ok.
 
@@ -315,7 +278,11 @@ free(Pipeline)
 -spec head(pid()) -> pid().
 
 head(Sup) ->
-   pipe_supervisor:head(Sup).
+   erlang:element(2,
+      lists:keyfind(1, 1, 
+         supervisor:which_children(Sup)
+      )
+   ).
 
 %%
 %% bind stage(s) together defining processing pipeline
@@ -348,11 +315,50 @@ bind(b, Pid, B) ->
 
 %%
 %% make pipeline by binding stages
-%% return pipeline head
--spec make([pid()]) -> pid().
+%% Options:
+%%   * join_side_a - join a process to pipeline on side a (head)
+%%   * join_side_b - join a process to pipeline on side b (tail)
+%%   * heir_side_a - heir process receives results of pipeline at side a
+%%   * heir_side_b - heir process receives results of pipeline at side b
+%%   * capacity - set capacity of flow control buffers
+%%
+-spec make([pid()]) -> [pid()].
+-spec make([pid()], [_]) -> [pid()].
 
-make(Pipeline) ->
-   [Head | Tail] = lists:reverse(Pipeline),
+make(Stages) ->
+   make(Stages, []).
+
+make(Stages, Opts) ->
+   heir_sides(option(heir_side_a, Opts), option(heir_side_b, Opts),
+      link_pipe(
+         join_sides(option(join_side_a, Opts), option(join_side_b, Opts),
+            capacity(option(capacity, Opts), Stages)
+         )
+      )
+   ).
+
+option(Key, Opts) ->
+   proplists:get_value(Key, Opts).
+
+%%
+capacity(undefined, Stages) ->
+   Stages;
+capacity(Capacity, Stages) ->
+   [pipe:ioctl_(Pid, {capacity, Capacity}) || Pid <- Stages],
+   Stages.
+
+%%
+join_sides(undefined, undefined, Stages) ->
+   Stages;
+join_sides(SideA, undefined, Stages) ->
+   [SideA | Stages];
+join_sides(undefied, SideB, Stages) ->
+   Stages ++ [SideB];
+join_sides(SideA, SideB, Stages) ->
+   [SideA | Stages] ++ [SideB].
+
+link_pipe(Stages) ->
+   [Head | Tail] = lists:reverse(Stages),
    lists:foldl(
       fun(Sink, Source) -> 
          {ok, _} = bind(b, Sink, Source),
@@ -362,8 +368,21 @@ make(Pipeline) ->
       Head,
       Tail
    ),
-   hd(Pipeline).
+   Stages.
 
+%%
+heir_sides(undefined, undefined, Stages) ->
+   Stages;
+heir_sides(SideA, undefined, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   Stages;
+heir_sides(undefined, SideB, Stages) ->
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages;
+heir_sides(SideA, SideB, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages.
 
 %%%------------------------------------------------------------------
 %%%
