@@ -79,6 +79,8 @@ lifecycle({transient, _, _, _}) ->
 lifecycle({temporary, _, _, _}) ->
    temporary.
 
+strategy({_, one_for_one, _, _}) ->
+   one_for_all;
 strategy({_, one_for_all, _, _}) ->
    one_for_all;
 strategy({_, rest_for_all, _, _}) ->
