@@ -38,6 +38,7 @@
    fspawn_link/1,
    fspawn_link/2,
    head/1,
+   tail/1,
    element/2,
    bind/2,
    bind/3,
@@ -281,6 +282,15 @@ free(Pipeline)
 head(Sup) ->
    erlang:element(2,
       hd(supervisor:which_children(Sup))
+   ).
+
+%%
+%% return tail of supervised pipeline 
+-spec tail(pid()) -> pid().
+
+tail(Sup) ->
+   erlang:element(2,
+      lists:last(supervisor:which_children(Sup))
    ).
 
 %%
