@@ -31,13 +31,14 @@
    supervise/2,
    supervise/3,
    supervise/4,
-   head/1,
    spawn/1,
    spawn_link/1,
    spawn_link/2,
    fspawn/1,
    fspawn_link/1,
    fspawn_link/2,
+   head/1,
+   element/2,
    bind/2,
    bind/3,
    make/1,
@@ -279,7 +280,16 @@ free(Pipeline)
 
 head(Sup) ->
    erlang:element(2,
-      lists:keyfind(1, 1, 
+      hd(supervisor:which_children(Sup))
+   ).
+
+%%
+%% return nth element of supervised pipeline
+-spec element(integer(), pid()) -> pid().
+
+element(Nth, Sup) ->
+   erlang:element(2,
+      lists:keyfind(Nth, 1, 
          supervisor:which_children(Sup)
       )
    ).
