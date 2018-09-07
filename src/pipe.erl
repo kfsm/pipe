@@ -340,9 +340,11 @@ make(Stages) ->
 
 make(Stages, Opts) ->
    heir_sides(option(heir_side_a, Opts), option(heir_side_b, Opts),
-      link_pipe(
-         join_sides(option(join_side_a, Opts), option(join_side_b, Opts),
-            capacity(option(capacity, Opts), Stages)
+      disjoin_sides(option(join_side_a, Opts), option(join_side_b, Opts),
+         link_pipe(
+            join_sides(option(join_side_a, Opts), option(join_side_b, Opts),
+               capacity(option(capacity, Opts), Stages)
+            )
          )
       )
    ).
@@ -367,6 +369,18 @@ join_sides(undefied, SideB, Stages) ->
 join_sides(SideA, SideB, Stages) ->
    [SideA | Stages] ++ [SideB].
 
+%%
+disjoin_sides(undefined, undefined, Stages) ->
+   Stages;
+disjoin_sides(SideA, undefined, [SideA | Stages]) ->
+   Stages;
+disjoin_sides(undefied, SideB, Stages) ->
+   Stages -- [SideB];
+disjoin_sides(SideA, SideB, [SideA | Stages]) ->
+   [SideA | Stages] -- [SideB].
+
+
+%%
 link_pipe(Stages) ->
    [Head | Tail] = lists:reverse(Stages),
    lists:foldl(
