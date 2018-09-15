@@ -22,181 +22,150 @@
 
 %%
 %% common test
--export([
-   all/0
-  ,groups/0
-  ,init_per_suite/1
-  ,end_per_suite/1
-  ,init_per_group/2
-  ,end_per_group/2
-]).
+-export([all/0]).
 
 -export([
-   start/1,
    start_link/1,
-   spawn/1,
-   spawn_link/1,
    call/1,
    cast/1,
    send/1,
-   ioctl/1
+   ioctl/1,
+   hibernate/1,
+   stop/1,
+   upgrade/1
 ]).
 
-%%% pipe behavior 
--export([init/1, free/2, ioctl/2, handle/3]).
-
-%%%----------------------------------------------------------------------------   
-%%%
-%%% suite
-%%%
-%%%----------------------------------------------------------------------------   
 all() ->
-   [
-      {group, interface}
+   [Test || {Test, NAry} <- ?MODULE:module_info(exports), 
+      Test =/= module_info,
+      NAry =:= 1
    ].
 
-groups() ->
-   [
-      {interface, [parallel], 
-         [start, start_link, spawn, spawn_link,
-          call, cast, send, ioctl]}
-   ].
-
-%%%----------------------------------------------------------------------------   
-%%%
-%%% init
-%%%
-%%%----------------------------------------------------------------------------   
-init_per_suite(Config) ->
-   Config.
-
-end_per_suite(_Config) ->
-   ok.
-
-%% 
 %%
-init_per_group(_, Config) ->
-   Config.
-
-end_per_group(_, _Config) ->
-   ok.
-
-%%%----------------------------------------------------------------------------   
-%%%
-%%% unit test
-%%%
-%%%----------------------------------------------------------------------------   
-
 %%
-start(_Config) ->
-   {ok, Pid} = pipe:start(?MODULE, [1], []),
-   true = erlang:is_process_alive(Pid),
+start_link(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
    ok = pipe:free(Pid),
-   ok = wait4free(Pid),
-   ok.
+   dead = shutdown(Pid).
 
 %%
-start_link(_Config) ->
-   {ok, Pid} = pipe:start_link(?MODULE, [1], []),
-   true = erlang:is_process_alive(Pid),
+%%
+call(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   ok = pipe:call(Pid, do_next_state),
+   ok = pipe:call(Pid, do_reply),
+   ok = gen_server:call(Pid, do_next_state),
+   ok = gen_server:call(Pid, do_reply),
+
    ok = pipe:free(Pid),
-   ok = wait4free(Pid),
-   ok.
+   dead = shutdown(Pid).
 
 %%
-spawn(_Config) ->
-   Pid = pipe:spawn(fun(X) -> {b, X} end),
-   true = erlang:is_process_alive(Pid),
+%%
+cast(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   A = pipe:cast(Pid, do_next_state),
+   B = pipe:cast(Pid, do_reply),
+   ok = recv_from(A),
+   ok = recv_from(B),
+
    ok = pipe:free(Pid),
-   ok = wait4free(Pid),
-   ok.
-   
+   dead = shutdown(Pid).   
+
 %%
-spawn_link(_Config) ->
-   Pid = pipe:spawn_link(fun(X) -> {b, X} end),
-   true = erlang:is_process_alive(Pid),
+%%
+send(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   pipe:send(Pid, do_next_state),
+   pipe:send(Pid, do_reply),
+
    ok = pipe:free(Pid),
-   ok = wait4free(Pid),
-   ok.
+   dead = shutdown(Pid).
 
 %%
-call(_Config) ->
-   {ok, Pid} = pipe:start(?MODULE, [1], []),
-   {ok, 1} = pipe:call(Pid, request, 100),
-   ok = pipe:free(Pid).
+%%
+ioctl(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   ok = pipe:ioctl(Pid, {register, 10}),
+   10 = pipe:ioctl(Pid, register),
+
+   ok = pipe:free(Pid),
+   dead = shutdown(Pid).   
 
 %%
-cast(_Config) ->
-   {ok, Pid} = pipe:start(?MODULE, [1], []),
-   Tx = pipe:cast(Pid, request),
+%%
+hibernate(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   ok = pipe:call(Pid, do_next_state_hibernate),
+   ok = pipe:call(Pid, do_reply_hibernate),
+
+   ok = pipe:free(Pid),
+   dead = shutdown(Pid).
+
+%%
+%%
+stop(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   ok = pipe:call(Pid, do_stop),
+
+   dead = shutdown(Pid).
+
+
+%%
+%%
+upgrade(_) ->
+   process_flag(trap_exit, true),
+   {ok, Pid} = pipe:start_link(process, [], []),
+
+   ok = pipe:call(Pid, do_upgrade),
+   ok = pipe:call(Pid, do_reply),
+
+   ok = pipe:free(Pid),
+   dead = shutdown(Pid).
+
+
+%%%------------------------------------------------------------------
+%%%
+%%% helper
+%%%
+%%%------------------------------------------------------------------   
+
+%%
+%%
+shutdown(Pid) ->
+   shutdown(Pid, shutdown).
+
+shutdown(Pid, Reason) ->
+   Ref = erlang:monitor(process, Pid),
+   exit(Pid, Reason),
    receive
-      {Tx, {ok, 1}} -> 
-         ok
-      after 100 ->
-         exit(timeout)
-   end,
-   ok = pipe:free(Pid).
-
-%%
-send(_Config) ->
-   {ok, Pid} = pipe:start(?MODULE, [1], []),
-   _ = pipe:send(Pid, request),
-   receive
-      {Tx, {ok, 1}} ->
-         exit(invalid)
-      after 100 ->
-         ok
-   end,
-   ok = pipe:free(Pid).
-
-%%
-ioctl(_Config) ->
-   {ok, Pid} = pipe:start(?MODULE, [1], []),
-   1 = pipe:ioctl(Pid, x),
-   ok = pipe:ioctl(Pid, {y, "text"}),
-   "text" = pipe:ioctl(Pid, y),
-   ok = pipe:free(Pid).
-
-
-%%%----------------------------------------------------------------------------   
-%%%
-%%% utility
-%%%
-%%%----------------------------------------------------------------------------   
-
-wait4free(Pid) ->
-   case erlang:is_process_alive(Pid) of
-      true ->
-         timer:sleep(10),
-         wait4free(Pid);
-
-      false ->
+      {'DOWN', Ref, process, Pid, noproc} ->
+         dead;
+      {'DOWN', Ref, process, Pid, killed} ->
+         ok;
+      {'DOWN', Ref, process, Pid, Reason} ->
          ok
    end.
 
-
-%%%----------------------------------------------------------------------------   
-%%%
-%%% pipe behavior
-%%%
-%%%----------------------------------------------------------------------------   
-
-init([X]) ->
-   {ok, handle, #{x => X}}.
-
-free(_Reason, _State) ->
-   ok.
-
-ioctl({Key, Val}, State) ->
-   maps:put(Key, Val, State);
-
-ioctl(Key, State) ->
-   maps:get(Key, State).
-
-handle(request, Pipe, #{x := X} = State) ->
-   pipe:ack(Pipe, {ok, X}),
-   {next_state, handle, State};
-
-handle(_, _, State) ->
-   {next_state, handle, State}.
-
+%%
+%%
+recv_from(Tx) ->
+   receive
+      {Tx, Msg} -> 
+         Msg
+      after 100 ->
+         exit(timeout)
+   end.

@@ -18,33 +18,194 @@
 %% @doc
 %%   reusable pipeline supervisor
 -module(pipe_supervisor).
--behaviour(supervisor).
+-behaviour(gen_server).
 
 -export([
-   start_link/2, 
-   init/1
+   start_link/3
+,  init/1
+,  terminate/2
+,  handle_call/3
+,  handle_cast/2
+,  handle_info/2
+,  code_change/3
 ]).
 
-%%
--define(CHILD(Type, I),            {I,  {I, start_link,   []}, transient, 5000, Type, dynamic}).
--define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, transient, 5000, Type, dynamic}).
--define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, transient, 5000, Type, dynamic}).
+-record(state, {
+   lifecycle = undefined :: transient | temporary | permanent 
+,  strategy  = undefined :: one_for_all
+,  intensity = undefined :: non_neg_integer()
+,  interval  = undefined :: non_neg_integer()
+,  spec      = undefined :: [_]
+,  opts      = undefined :: [_]
+,  stages    = undefined :: [_]
+,  failure   = []  
+}).
 
+%%%----------------------------------------------------------------------------   
+%%%
+%%% Factory
+%%%
+%%%----------------------------------------------------------------------------   
 
+start_link(Mod, Args, Opts) ->
+   gen_server:start_link(?MODULE, [Mod, Args, Opts], []).
+
+%% 
 %%
-start_link(Mod, Args) ->
-   supervisor:start_link(?MODULE, [Mod, Args]).
-   
-init([Mod, Args]) ->
-   {ok, {Strategy, Spec}} = Mod:init(Args),
+init([Mod, Args, Opts]) ->
+   process_flag(trap_exit, true),
+   {ok, {Supervisor, Spec}} = Mod:init(Args),
    {ok,
-      {
-         strategy(Strategy),
-         Spec ++ [?CHILD(worker, pipe_builder, [self()])]
-      }
-   }. 
+      init_pipe(#state{
+         lifecycle = lifecycle(spec(Supervisor)),
+         strategy  = strategy(spec(Supervisor)),
+         intensity = intensity(spec(Supervisor)),
+         interval  = interval(spec(Supervisor)),
+         spec      = Spec,
+         opts      = Opts
+      })
+   }.
 
-strategy({one_for_all, _, _} = Strategy) ->
-   Strategy;
-strategy({_, Rate, Time}) ->
-   {rest_for_one, Rate, Time}.
+spec({_, _, _, _} = Spec) -> 
+   Spec;
+spec({Strategy, Intensity, Interval}) -> 
+   {permanent, Strategy, Intensity, Interval}.
+
+
+lifecycle({permanent, _, _, _}) ->
+   permanent;
+lifecycle({transient, _, _, _}) ->
+   transient;
+lifecycle({temporary, _, _, _}) ->
+   temporary.
+
+strategy({_, one_for_one, _, _}) ->
+   one_for_all;
+strategy({_, one_for_all, _, _}) ->
+   one_for_all;
+strategy({_, rest_for_all, _, _}) ->
+   one_for_all.
+
+intensity({_, _, Intensity, _})
+ when Intensity >= 0 ->
+   Intensity.
+
+interval({_, _, _, Interval})
+ when Interval >= 0 ->
+   Interval.
+
+%%
+%%
+terminate(_, #state{} = State) ->
+   free_pipe(State),
+   ok.
+
+%%
+%%
+handle_info({'EXIT', _Pid, normal}, #state{lifecycle = temporary} = State) ->
+   {stop, normal, State};
+
+handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = temporary} = State) ->
+   {stop, shutdown, State};
+
+handle_info({'EXIT', _Pid, normal}, #state{lifecycle = transient} = State) ->
+   {stop, normal, State};
+
+handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = transient} = State) ->
+   recover_pipe(State);
+
+handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = permanent} = State) ->
+   recover_pipe(State);
+
+handle_info(_, State) ->
+   {noreply, State}.
+
+%%
+%%
+handle_cast(_, State) ->
+   {noreply, State}.
+
+%%
+%%
+handle_call(which_children, _, #state{stages = Stages} = State) ->
+   {reply,
+      [{Id, Pid, worker,dynamic} || {Id, Pid} <- Stages],
+      State
+   }.
+
+%%
+%%
+code_change(_Vsn, State, _) ->
+   {ok, State}.
+
+%%
+%%
+recover_pipe(#state{} = State0) ->
+   case is_permanent_failure(State0) of
+      {false, State1} ->
+         {noreply, respawn(State1)};
+      {true,  State1} ->
+         {stop, shutdown, State1}
+   end.
+
+is_permanent_failure(#state{failure = Failure0, interval = Interval, intensity = Intensity} = State) ->
+   T0 = erlang:monotonic_time(seconds),
+   T1 = T0 - Interval,
+   Failure1 = lists:filter(fun(X) -> X >= T1 end, [T0 | Failure0]),
+   {length(Failure1) > Intensity, State#state{failure = Failure1}}.
+
+%%
+%%
+init_pipe(#state{spec = Spec, opts = Opts} = State) ->
+   Pids = pipe:make([init_pipe_stage(MFA) || MFA <- Spec], Opts),
+   State#state{
+      stages = lists:zip(lists:seq(1, length(Pids)), Pids)
+   }.
+
+init_pipe_stage({M, F, A}) ->
+   {ok, Pid} = (catch erlang:apply(M, F, A)),
+   Pid.
+
+
+%%
+%%
+free_pipe(#state{stages = Stages} = State) ->
+   lists:foreach(fun free_pipe_stage/1, Stages),
+   State#state{ 
+      stages = undefined
+   }.
+
+free_pipe_stage({_, Pid}) ->
+   %% See Erlang/OTP supervisor for details
+   erlang:monitor(process, Pid),
+   erlang:unlink(Pid),
+   receive
+      {'EXIT', Pid, Reason} -> 
+         receive 
+            {'DOWN', _, process, Pid, _} ->
+               {error, Reason}
+         end
+   after 0 -> 
+      exit(Pid, shutdown),
+      receive 
+         {'DOWN', _MRef, process, Pid, shutdown} ->
+            ok;
+         {'DOWN', _MRef, process, Pid, Reason} ->
+            {error, Reason}
+         % @todo: shutdown timeout
+         % after Time ->
+         %    exit(Pid, kill),
+         %    receive
+         %    {'DOWN', _MRef, process, Pid, Reason} ->
+         %       {error, Reason}
+         %    end
+      end
+   end.
+
+%%
+%%
+respawn(State) ->
+   init_pipe(free_pipe(State)).
+
+
+

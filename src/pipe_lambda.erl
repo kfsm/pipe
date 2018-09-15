@@ -32,16 +32,19 @@ init([Fun]) ->
 free(_, _Fun) ->
    ok.
 
+handle({sidedown, _, _}, _, Fun) ->
+   {next_state, handle, Fun};
+
 handle(In, Pipe, Fun) ->
    case Fun(In) of
       stop ->
          {stop, normal, Fun};
 
-      {a, Eg} ->
+      {a, Eg} when Eg /= undefined ->
          pipe:a(Pipe, Eg),
          {next_state, handle, Fun};
 
-      {b, Eg} ->
+      {b, Eg} when Eg /= undefined ->
          pipe:b(Pipe, Eg),
          {next_state, handle, Fun};
 

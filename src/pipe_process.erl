@@ -38,11 +38,14 @@
 
 %% internal state
 -record(machine, {
-   mod       = undefined :: atom()  %% FSM implementation
-  ,sid       = undefined :: atom()  %% FSM state (transition function)
-  ,state     = undefined :: any()   %% FSM internal data structure
-  ,a         = undefined :: pid()   %% pipe side (a) // source
-  ,b         = undefined :: pid()   %% pipe side (b) // sink
+   mod       = undefined :: atom(),    %% FSM implementation
+   sid       = undefined :: atom(),    %% FSM state (transition function)
+   state     = undefined :: any(),     %% FSM internal data structure
+   a         = undefined :: pid(),     %% pipe side (a) // source
+   b         = undefined :: pid(),     %% pipe side (b) // sink
+   capacity  = undefined :: integer(), %% stage capacity to handle message
+   acredit   = undefined :: integer(), 
+   bcredit   = undefined :: integer()
 }).
 
 %%%----------------------------------------------------------------------------   
@@ -54,7 +57,7 @@
 %%
 %%
 init([Mod, Args]) ->
-   init(Mod:init(Args), #machine{mod=Mod}).
+   init(Mod:init(Args), #machine{mod = Mod}).
 
 init({ok, Sid, State}, S) ->
    {ok, S#machine{sid=Sid, state=State}};
@@ -104,6 +107,15 @@ handle_info({'$pipe', Tx, {ioctl, b}}, S) ->
    pipe:ack(Tx, {ok, S#machine.b}),
    {noreply, S};
 
+handle_info({'$pipe', _, {ioctl, capacity, Val}}, #machine{} = State) ->
+   {noreply,
+      State#machine{
+         capacity = Val,
+         acredit  = Val + rand:uniform(Val),
+         bcredit  = Val + rand:uniform(Val)
+      }
+   };
+
 handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
    % ioctl set request
    ?DEBUG("pipe ioctl ~p: req ~p, val ~p~n", [self(), Req, Val]),
@@ -115,6 +127,13 @@ handle_info({'$pipe', Tx, {ioctl, Req, Val}}, #machine{mod=Mod}=S) ->
       pipe:ack(Tx, ok),
       {noreply, S}
    end;
+
+handle_info({'$pipe', Tx, {ioctl, side_a_capacity}}, #machine{capacity = C}=S) ->
+   pipe:ack(Tx, {side_a_credit, C + rand:uniform(C)}),
+   {noreply, S};
+handle_info({'$pipe', Tx, {ioctl, side_b_capacity}}, #machine{capacity = C}=S) ->
+   pipe:ack(Tx, {side_b_credit, C + rand:uniform(C)}),
+   {noreply, S};
 
 handle_info({'$pipe', Tx, {ioctl, Req}}, #machine{mod=Mod}=S) ->
    % ioctl get request
@@ -149,6 +168,11 @@ handle_info({'$pipe', Tx, Msg}, #machine{a = A, b = B}=State) ->
    %% in-bound call to FSM
    ?DEBUG("pipe recv ~p: tx ~p, msg ~p~n", [self(), Tx, Msg]),
    run(Msg, make_pipe(Tx, A, B), State);
+
+handle_info({_, {side_a_credit, N}}, #machine{}=State) ->   
+   {noreply, State#machine{acredit = N}};
+handle_info({_, {side_b_credit, N}}, #machine{}=State) ->   
+   {noreply, State#machine{bcredit = N}};
 
 handle_info(Msg, #machine{a = A, b = B}=State) ->
    %% out-of-bound message, assume b is emitter, a is consumer
@@ -199,22 +223,27 @@ make_pipe(Tx, A, _B) ->
 run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
    case Mod:Sid0(Msg, Pipe, S#machine.state) of
       {next_state, Sid, State} ->
-         {noreply, S#machine{sid=Sid, state=State}};
+         {noreply, 
+            consume_link_credit(pipe:b(Pipe), S#machine{sid=Sid, state=State})};
 
       {next_state, Sid, State, TorH} ->
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
+         {noreply, 
+            consume_link_credit(pipe:b(Pipe), S#machine{sid=Sid, state=State}), TorH};
 
       {reply, Reply, State} ->
          pipe:ack(Pipe, Reply),
-         {noreply, S#machine{sid=Sid0, state=State}};
+         {noreply, 
+            consume_link_credit(pipe:b(Pipe), S#machine{sid=Sid0, state=State})};
 
       {reply, Reply, Sid, State} ->
          pipe:ack(Pipe, Reply),
-         {noreply, S#machine{sid=Sid, state=State}};
+         {noreply, 
+            consume_link_credit(pipe:b(Pipe), S#machine{sid=Sid, state=State})};
 
       {reply, Reply, Sid, State, TorH} ->
          pipe:ack(Pipe, Reply),
-         {noreply, S#machine{sid=Sid, state=State}, TorH};
+         {noreply, 
+            consume_link_credit(pipe:b(Pipe), S#machine{sid=Sid, state=State}), TorH};
 
       {upgrade, New, Args} ->
          case New:init(Args) of
@@ -228,3 +257,67 @@ run(Msg, Pipe, #machine{mod=Mod, sid=Sid0}=S) ->
          {stop, Reason, S#machine{state=State}}
    end.
 
+%%
+%%
+consume_link_credit(undefined, #machine{} = State) ->
+   State;
+
+consume_link_credit(A, #machine{a = A, acredit = undefined} = State) ->
+   State;
+consume_link_credit(A, #machine{a = A, acredit = 0, capacity = C} = State) ->
+   {side_a_credit, N} = side_a_credit_update_protocol(A, C),
+   State#machine{acredit = N};
+consume_link_credit(A, #machine{a = A, acredit = Credit} = State) ->
+   State#machine{acredit = Credit - 1};
+
+consume_link_credit(B, #machine{b = B, bcredit = undefined} = State) ->
+   State;
+consume_link_credit(B, #machine{b = B, bcredit = 0, capacity = C} = State) ->
+   {side_b_credit, N} = side_b_credit_update_protocol(B, C),
+   State#machine{bcredit = N};
+consume_link_credit(B, #machine{b = B, bcredit = Credit} = State) ->
+   State#machine{bcredit = Credit - 1}.
+
+
+
+side_a_credit_update_protocol(Pid, Capacity) ->
+   try erlang:monitor(process, Pid) of
+      Tx ->
+         catch erlang:send(Pid, {'$pipe', {self(), Tx}, {ioctl, side_a_capacity}}, [noconnect]),
+         receive
+         {Tx, Reply} ->
+            erlang:demonitor(Tx, [flush]),
+            Reply;
+         {'DOWN', Tx, _, _, noconnection} ->
+            exit({nodedown, erlang:node(Pid)});
+         {'DOWN', Tx, _, _, Reason} ->
+            exit(Reason);
+         {'$pipe', OtherTx, {ioctl, side_b_capacity}} ->
+            pipe:ack(OtherTx, {side_b_credit, Capacity}),
+            erlang:demonitor(Tx, [flush]),
+            {side_a_credit, 1}
+         end
+   catch error:Reason ->
+      exit(Reason)
+   end.
+
+side_b_credit_update_protocol(Pid, Capacity) ->
+   try erlang:monitor(process, Pid) of
+      Tx ->
+         catch erlang:send(Pid, {'$pipe', {self(), Tx}, {ioctl, side_b_capacity}}, [noconnect]),
+         receive
+         {Tx, Reply} ->
+            erlang:demonitor(Tx, [flush]),
+            Reply;
+         {'DOWN', Tx, _, _, noconnection} ->
+            exit({nodedown, erlang:node(Pid)});
+         {'DOWN', Tx, _, _, Reason} ->
+            exit(Reason);
+         {'$pipe', OtherTx, {ioctl, side_a_capacity}} ->
+            pipe:ack(OtherTx, {side_a_credit, Capacity}),
+            erlang:demonitor(Tx, [flush]),
+            {side_b_credit, 1}
+         end
+   catch error:Reason ->
+      exit(Reason)
+   end.

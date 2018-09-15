@@ -1,14 +1,13 @@
 {application, pipe,
    [
       {description, "process pipe library"},
-      {vsn,         "1.9.0"},
+      {vsn,         "2.0.0"},
       {modules,     []},
       {registered,  []},
       {applications,[
          kernel,
          stdlib
       ]},
-      {mod, {pipe_app, []}},
       {env, []},
 
       {licenses, ["Apache"]},

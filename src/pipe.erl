@@ -28,18 +28,22 @@
    start/4,
    start_link/3,
    start_link/4,
-   supervisor/2,
+   supervise/2,
+   supervise/3,
+   supervise/4,
    spawn/1,
    spawn_link/1,
    spawn_link/2,
    fspawn/1,
    fspawn_link/1,
    fspawn_link/2,
-   stream/1,
-   stream/2,
+   head/1,
+   tail/1,
+   element/2,
    bind/2,
    bind/3,
    make/1,
+   make/2,
    free/1,
    monitor/1,
    monitor/2,
@@ -78,7 +82,7 @@
 %%% data types
 %%%
 %%%------------------------------------------------------------------   
--export_type([pipe/0, f/0]).
+-export_type([pipe/0, fpipe/0, fpure/0]).
 
 %%
 %% The pipe is opaque data structure maintained by pipe process.
@@ -92,17 +96,14 @@
 %% pipe lambda expression is spawned within pipe process.
 %% It builds a new message by applying a function to all received message.
 %% The process emits the new message either to side (a) or (b). 
--type f() :: fun((_) -> {a, _} | {b, _} | _).
-
-%%
-%% see datum:stream()
--type stream() :: {s, _, _}.
+-type fpipe() :: fun((_) -> {a, _} | {b, _} | _).
+-type fpure() :: fun((_) -> undefined | _).
 
 %%
 %% the process monitor structure 
 -type monitor() :: {reference(), pid() | node()}.
 
-
+ 
 %%%------------------------------------------------------------------
 %%%
 %%% pipe behavior interface
@@ -162,17 +163,17 @@ start() ->
 
 %%%------------------------------------------------------------------
 %%%
-%%% pipe management interface
+%%% factory interface
 %%%
 %%%------------------------------------------------------------------   
 
 %%
 %% start pipe state machine, the function takes behavior module,
 %% list of arguments to pipe init functions and list of container options.
--spec start(atom(), [_], [_]) -> {ok, pid()} | {error, any()}.
--spec start(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
--spec start_link(atom(), list(), list()) -> {ok, pid()} | {error, any()}.
--spec start_link(atom(), atom(), list(), list()) -> {ok, pid()} | {error, any()}.
+-spec start(atom(), [_], [_]) -> {ok, pid()} | {error, _}.
+-spec start(atom(), atom(), list(), list()) -> {ok, pid()} | {error, _}.
+-spec start_link(atom(), list(), list()) -> {ok, pid()} | {error, _}.
+-spec start_link(atom(), atom(), list(), list()) -> {ok, pid()} | {error, _}.
 
 start(Mod, Args, Opts) ->
    gen_server:start(?CONFIG_PIPE, [Mod, Args], Opts).
@@ -184,35 +185,69 @@ start_link(Mod, Args, Opts) ->
 start_link(Name, Mod, Args, Opts) ->
    gen_server:start_link(Name, ?CONFIG_PIPE, [Mod, Args], Opts).
 
+
 %%
 %% start supervise-able pipeline
--spec supervisor(atom(), [_]) -> {ok, pid()} | {error, any()}.
+-spec supervise(atom(), [_]) -> {ok, pid()} | {error, any()}.
 
-supervisor(Mod, Args) ->
-   pipe_supervisor:start_link(Mod, Args).
+supervise(Mod, Args) ->
+   pipe_supervisor:start_link(Mod, Args, []).
+
+
+supervise(pipe, Strategy, Spec) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]],
+      []
+   );
+
+supervise(pure, Strategy, Spec) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
+      []
+   );
+
+supervise(Mod, Args, Opts) ->
+   pipe_supervisor:start_link(Mod, Args, Opts).
+
+
+supervise(pipe, Strategy, Spec, Opts) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, spawn_link, [X]} || X <- Spec]],
+      Opts
+   );
+
+supervise(pure, Strategy, Spec, Opts) ->
+   pipe_supervisor:start_link(
+      pipe_supervisor_identity, 
+      [Strategy, [{pipe, fspawn_link, [X]} || X <- Spec]],
+      Opts
+   ).
 
 %%
-%% spawn pipe lambda expression
-%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
--spec spawn(f()) -> pid().
--spec spawn_link(f()) -> pid().
--spec spawn_link(f(), list()) -> pid().
+%% spawn pipe lambda expression, pipe lambda is a function that
+%%   fun/1 :: (_) -> {a, _} | {b, _} | _
+-spec spawn(fpipe()) -> {ok, pid()} | {error, _}.
+-spec spawn_link(fpipe()) -> {ok, pid()} | {error, _}.
+-spec spawn_link(fpipe(), [_]) -> {ok, pid()} | {error, _}.
 
 spawn(Fun) ->
-   either_pid( start(pipe_lambda, [Fun], []) ).
+   start(pipe_lambda, [Fun], []).
 
 spawn_link(Fun) ->
    pipe:spawn_link(Fun, []).
 
 spawn_link(Fun, Opts) ->
-   either_pid( start_link(pipe_lambda, [Fun], Opts) ).
+   start_link(pipe_lambda, [Fun], Opts).
 
 %%
-%% spawn pipe lambda expression
-%% function is fun/1 :: (any()) -> {a, Msg} | {b, Msg} | _
--spec fspawn(f()) -> {ok, pid()} | {error, _}.
--spec fspawn_link(f()) -> {ok, pid()} | {error, _}.
--spec fspawn_link(f(), list()) -> {ok, pid()} | {error, _}.
+%% spawn a pure function within a pipe, a pure function takes input and produces output
+%%   fun/1 :: (_) -> undefined | _
+-spec fspawn(fpure()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(fpure()) -> {ok, pid()} | {error, _}.
+-spec fspawn_link(fpure(), [_]) -> {ok, pid()} | {error, _}.
 
 fspawn(Fun) ->
    pipe:spawn(fun(X) -> {b, Fun(X)} end).
@@ -222,19 +257,6 @@ fspawn_link(Fun) ->
 
 fspawn_link(Fun, Opts) ->
    pipe:spawn_link(fun(X) -> {b, Fun(X)} end, Opts).
-
-%%
-%% spawn stream processing within pipes  
-%% Options
-%%   sync - use synchronous i/o 
--spec stream(stream()) -> {ok, pid()} | {error, _}.
--spec stream(stream(), list()) -> {ok, pid()} | {error, _}.
-
-stream(Stream) ->
-   stream(Stream, []).
-
-stream(Stream, Opts) ->
-   pipe_stream:start_link(Stream, Opts).
 
 %%
 %% terminate pipe or pipeline
@@ -247,6 +269,40 @@ free(Pipeline)
  when is_list(Pipeline) ->
    lists:foreach(fun free/1, Pipeline).
 
+%%%------------------------------------------------------------------
+%%%
+%%% connectivity interface
+%%%
+%%%------------------------------------------------------------------   
+
+%%
+%% return head of supervised pipeline 
+-spec head(pid()) -> pid().
+
+head(Sup) ->
+   erlang:element(2,
+      hd(supervisor:which_children(Sup))
+   ).
+
+%%
+%% return tail of supervised pipeline 
+-spec tail(pid()) -> pid().
+
+tail(Sup) ->
+   erlang:element(2,
+      lists:last(supervisor:which_children(Sup))
+   ).
+
+%%
+%% return nth element of supervised pipeline
+-spec element(integer(), pid()) -> pid().
+
+element(Nth, Sup) ->
+   erlang:element(2,
+      lists:keyfind(Nth, 1, 
+         supervisor:which_children(Sup)
+      )
+   ).
 
 %%
 %% bind stage(s) together defining processing pipeline
@@ -279,11 +335,64 @@ bind(b, Pid, B) ->
 
 %%
 %% make pipeline by binding stages
-%% return pipeline head
--spec make([pid()]) -> pid().
+%% Options:
+%%   * join_side_a - join a process to pipeline on side a (head)
+%%   * join_side_b - join a process to pipeline on side b (tail)
+%%   * heir_side_a - heir process receives results of pipeline at side a
+%%   * heir_side_b - heir process receives results of pipeline at side b
+%%   * capacity - set capacity of flow control buffers
+%%
+-spec make([pid()]) -> [pid()].
+-spec make([pid()], [_]) -> [pid()].
 
-make(Pipeline) ->
-   [Head | Tail] = lists:reverse(Pipeline),
+make(Stages) ->
+   make(Stages, []).
+
+make(Stages, Opts) ->
+   heir_sides(option(heir_side_a, Opts), option(heir_side_b, Opts),
+      disjoin_sides(option(join_side_a, Opts), option(join_side_b, Opts),
+         link_pipe(
+            join_sides(option(join_side_a, Opts), option(join_side_b, Opts),
+               capacity(option(capacity, Opts), Stages)
+            )
+         )
+      )
+   ).
+
+option(Key, Opts) ->
+   proplists:get_value(Key, Opts).
+
+%%
+capacity(undefined, Stages) ->
+   Stages;
+capacity(Capacity, Stages) ->
+   [pipe:ioctl_(Pid, {capacity, Capacity}) || Pid <- Stages],
+   Stages.
+
+%%
+join_sides(undefined, undefined, Stages) ->
+   Stages;
+join_sides(SideA, undefined, Stages) ->
+   [SideA | Stages];
+join_sides(undefied, SideB, Stages) ->
+   Stages ++ [SideB];
+join_sides(SideA, SideB, Stages) ->
+   [SideA | Stages] ++ [SideB].
+
+%%
+disjoin_sides(undefined, undefined, Stages) ->
+   Stages;
+disjoin_sides(SideA, undefined, [SideA | Stages]) ->
+   Stages;
+disjoin_sides(undefied, SideB, Stages) ->
+   Stages -- [SideB];
+disjoin_sides(SideA, SideB, [SideA | Stages]) ->
+   [SideA | Stages] -- [SideB].
+
+
+%%
+link_pipe(Stages) ->
+   [Head | Tail] = lists:reverse(Stages),
    lists:foldl(
       fun(Sink, Source) -> 
          {ok, _} = bind(b, Sink, Source),
@@ -293,7 +402,27 @@ make(Pipeline) ->
       Head,
       Tail
    ),
-   hd(Pipeline).
+   Stages.
+
+%%
+heir_sides(undefined, undefined, Stages) ->
+   Stages;
+heir_sides(SideA, undefined, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   Stages;
+heir_sides(undefined, SideB, Stages) ->
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages;
+heir_sides(SideA, SideB, Stages) ->
+   pipe:bind(a, hd(Stages), SideA),
+   pipe:bind(b, lists:last(Stages), SideB),
+   Stages.
+
+%%%------------------------------------------------------------------
+%%%
+%%% management interface
+%%%
+%%%------------------------------------------------------------------   
 
 %%
 %% ioctl interface (sync and async)
@@ -357,7 +486,7 @@ demonitor({node, _, Node}) ->
 
 %%%------------------------------------------------------------------
 %%%
-%%% pipe i/o interface
+%%% i/o interface
 %%%
 %%%------------------------------------------------------------------   
 
@@ -607,13 +736,6 @@ swap({pipe, A, B}) ->
 %%% private
 %%%
 %%%----------------------------------------------------------------------------   
-
-%%
-%%
-either_pid({ok, Pid}) -> 
-   Pid;
-either_pid({error, Reason}) ->
-   exit(Reason).
 
 %%
 %% send message through pipe
