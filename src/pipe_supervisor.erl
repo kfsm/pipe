@@ -102,20 +102,23 @@ terminate(_, #state{} = State) ->
 
 %%
 %%
-handle_info({'EXIT', _Pid, normal}, #state{lifecycle = temporary} = State) ->
+handle_info({'EXIT', Pid, normal}, #state{lifecycle = temporary} = State) ->
+   heir(normal, Pid, State),
    {stop, normal, State};
 
-handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = temporary} = State) ->
+handle_info({'EXIT', Pid, Reason}, #state{lifecycle = temporary} = State) ->
+   heir(Reason, Pid, State),
    {stop, shutdown, State};
 
-handle_info({'EXIT', _Pid, normal}, #state{lifecycle = transient} = State) ->
+handle_info({'EXIT', Pid, normal}, #state{lifecycle = transient} = State) ->
+   heir(normal, Pid, State),
    {stop, normal, State};
 
-handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = transient} = State) ->
-   recover_pipe(State);
+handle_info({'EXIT', Pid, Reason}, #state{lifecycle = transient} = State) ->
+   recover_pipe(Reason, Pid, State);
 
-handle_info({'EXIT', _Pid,_Reason}, #state{lifecycle = permanent} = State) ->
-   recover_pipe(State);
+handle_info({'EXIT', Pid, Reason}, #state{lifecycle = permanent} = State) ->
+   recover_pipe(Reason, Pid, State);
 
 handle_info(_, State) ->
    {noreply, State}.
@@ -140,11 +143,22 @@ code_change(_Vsn, State, _) ->
 
 %%
 %%
-recover_pipe(#state{} = State0) ->
+heir(Reason, Pid, #state{opts = Opts} = State) ->
+   case proplists:get_value(heir, Opts) of
+      undefined ->
+         ok;
+      Heir ->
+         Heir ! {'DOWN', self(), pipe, Pid, Reason}
+   end.
+
+%%
+%%
+recover_pipe(Reason, Pid, #state{} = State0) ->
    case is_permanent_failure(State0) of
       {false, State1} ->
          {noreply, respawn(State1)};
       {true,  State1} ->
+         heir(Reason, Pid, State1),
          {stop, shutdown, State1}
    end.
 

@@ -40,6 +40,14 @@ handle(In, Pipe, Fun) ->
       stop ->
          {stop, normal, Fun};
 
+      {a, {stream, _, _} = Stream} ->
+         stream:foreach(fun(X) -> pipe:a(Pipe, X) end, Stream),
+         {next_state, handle, Fun};
+
+      {b, {stream, _, _} = Stream} ->
+         stream:foreach(fun(X) -> pipe:b(Pipe, X) end, Stream),
+         {next_state, handle, Fun};
+
       {a, Eg} when Eg /= undefined ->
          pipe:a(Pipe, Eg),
          {next_state, handle, Fun};
