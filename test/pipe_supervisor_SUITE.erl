@@ -18,6 +18,8 @@
 
 ,  fault_tolerance_transient/1
 ,  fault_tolerance_permanent/1
+
+,  hier_pipe_failure/1
 ]).
 
 all() ->
@@ -175,6 +177,26 @@ fault_tolerance_permanent(_) ->
    failure_of_child(1, Sup),
    failure(shutdown),
    dead = shutdown(Sup).
+
+%%
+%%
+hier_pipe_failure(_) ->
+   process_flag(trap_exit, true), 
+   {ok, Sup} = pipe:supervise(pure, {permanent, one_for_all, 0, 1}, [
+      fun(X) -> X end,
+      fun(X) -> X end
+   ], [{heir, self()}]),
+   failure_of_child(1, Sup),
+
+   receive
+      {'DOWN', Sup, pipe, _, killed} ->
+         ok
+   after 100 ->
+      exit(timeout)
+   end,
+
+   ok = shutdown(Sup).
+
 
 %%%------------------------------------------------------------------
 %%%
