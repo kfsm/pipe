@@ -143,7 +143,7 @@ code_change(_Vsn, State, _) ->
 
 %%
 %%
-heir(Reason, Pid, #state{opts = Opts} = State) ->
+heir(Reason, Pid, #state{opts = Opts}) ->
    case proplists:get_value(heir, Opts) of
       undefined ->
          ok;
