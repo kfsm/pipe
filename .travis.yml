@@ -6,6 +6,7 @@ script:
    - ./rebar3 coveralls send
 
 otp_release:
+   - 25.2
    - 20.3
    - 19.2
    - 18.3
